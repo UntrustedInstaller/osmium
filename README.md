@@ -25,7 +25,7 @@ To compile and run OsmiumOS, the following programs are needed
 
 #### 1. First, compile the binary files using NASM:
 - Bootloader: ``` nasm -f src/boot.asm -o build/boot.bin```
-- Kernel: ```nasm -f src/kernel.asm -o build/kernel.asm```
+- Kernel: ```nasm -f src/kernel.asm -o build/kernel.bin```
 
 #### 2. Generate the disk image
 * **Linux, MacOS, or bash:**  
