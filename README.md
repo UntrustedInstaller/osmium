@@ -4,7 +4,7 @@ OsmiumOS is a scratch-built, 16-bit, command-line-interface operating system wri
 ## Features and Commands
 
 ### 📔 Features:
-* **Completely interactive CLI interface with live backspacing, character replacement, and command history.**
+* **Completely interactive command-line interface with live backspacing, character replacement, and command history.**
 ### 📄 Commands:
 * **"help"** - Displays command registry and descriptions of each command.  
 * **"clear"** - Flushes the interface and resets the viewport.  
