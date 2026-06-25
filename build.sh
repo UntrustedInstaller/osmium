@@ -25,6 +25,7 @@ cat build/boot.bin build/kernel.bin > build/combined.tmp
 dd if=/dev/zero of=build/os.img bs=1024 count=1440 status=none
 # Inject our code into the template
 dd if=build/combined.tmp of=build/os.img conv=notrunc status=none
+truncate -s 1440k build/os.img
 
 # Clean up intermediate files, leaving just the final image and binaries
 rm build/combined.tmp

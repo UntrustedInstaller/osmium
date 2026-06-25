@@ -12,9 +12,9 @@ start:
     mov ah, 0x00
     int 0x13
 
-    ; Read Stage 2 from disk
+; Read Stage 2 from disk
     mov ah, 0x02        ; BIOS read sectors function
-    mov al, 4           ; Number of sectors to read (increase as your CLI grows)
+    mov al, 16          ; <--- INCREASE THIS FROM 4 TO 16!
     mov ch, 0           ; Cylinder 0
     mov cl, 2           ; Sector 2 (Sector 1 is Stage 1)
     mov dh, 0           ; Head 0
@@ -26,12 +26,12 @@ start:
     mov bx, 0x0000
 
     int 0x13
-    jc disk_error       ; Jump if carry flag is set (error)
+    jc dsk_err       ; Jump if carry flag is set (error)
 
     ; Jump to Stage 2 / Kernel!
     jmp 0x1000:0x0000
 
-disk_error:
+dsk_err:
     ; (Hang or print error message here)
     jmp $
 
