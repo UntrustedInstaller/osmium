@@ -11,7 +11,10 @@ OsmiumOS is a scratch-built, 16-bit, command-line-interface operating system wri
 * **"help"** - Displays command registry and descriptions of each command.  
 * **"clear"** - Flushes the interface and resets the viewport.  
 * **"greeting"** - Displays the system greeting and available memory.  
-* **"mem"** - Prints the amount of memory available to the system in raw text.  
+* **"mem"** - Prints the amount of memory available to the system in raw text.
+* **"theme [number]"** - Select from 1 of 5 available themes (0-4)
+* **"edit"** - Open the primitive text editing application
+* **"dir"** - List file(s) in directory
 * **"echo [text]"** - Prints out the provided user input back to the console.  
 * **"reboot"** - Reboots the system directly from the CLI
 
