@@ -1,10 +1,12 @@
 # OsmiumOS
 OsmiumOS is a scratch-built, 16-bit, command-line-interface operating system written in **NASM Assembly**, designed to operate free of dependencies.
 
+![Screenshot](image.png)
+
 ## Features and Commands
 
 ### 📔 Features:
-* **Completely interactive CLI interface with live backspacing, character replacement, and command history.**
+* **Completely interactive command-line interface with live backspacing, character replacement, and command history.**
 ### 📄 Commands:
 * **"help"** - Displays command registry and descriptions of each command.  
 * **"clear"** - Flushes the interface and resets the viewport.  
@@ -25,7 +27,7 @@ To compile and run OsmiumOS, the following programs are needed
 
 #### 1. First, compile the binary files using NASM:
 - Bootloader: ``` nasm -f src/boot.asm -o build/boot.bin```
-- Kernel: ```nasm -f src/kernel.asm -o build/kernel.asm```
+- Kernel: ```nasm -f src/kernel.asm -o build/kernel.bin```
 
 #### 2. Generate the disk image
 * **Linux, MacOS, or bash:**  
