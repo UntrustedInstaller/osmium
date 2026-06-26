@@ -390,7 +390,9 @@ exe_dir:
 
 .print_name:
     lodsb
+    push cx
     call print_char
+    pop cx
     loop .print_name
     pop cx               ; Restore outer loop counter cleanly
 

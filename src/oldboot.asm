@@ -1,34 +1,7 @@
 [org 0x7c00]
 bits 16
 
-; =====================================================================
-;  BIOS PARAMETER BLOCK
-; =====================================================================
-jmp short boot_start
-nop
-
-db "OSMIUM "
-dw 512
-db 1
-dw 1
-db 2
-dw 224
-dw 2880
-db 0xF0
-dw 9
-dw 18
-dw 2
-dd 0
-dd 0
-
-db 0
-db 0
-db 0x29
-dd 0x12345678
-db "OSMIUMOS   "
-db "FAT12   "
-
-boot_start:
+start:
     xor ax, ax          ; Clear AX
     mov ds, ax          ; Set Data Segment to 0
     mov es, ax          ; Set Extra Segment to 0
@@ -41,7 +14,7 @@ boot_start:
 
 ; Read Stage 2 from disk
     mov ah, 0x02        ; BIOS read sectors function
-    mov al, 16          ; 16 sectors
+    mov al, 16          ; <--- INCREASE THIS FROM 4 TO 16!
     mov ch, 0           ; Cylinder 0
     mov cl, 2           ; Sector 2 (Sector 1 is Stage 1)
     mov dh, 0           ; Head 0
