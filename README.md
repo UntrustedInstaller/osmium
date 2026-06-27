@@ -3,6 +3,10 @@ OsmiumOS is a scratch-built, 16-bit, command-line-interface operating system wri
 
 ![Screenshot](image.png)
 
+#### Note: All development on OsmiumOS has paused until the C migration (Iridium) is complete.
+#### Iridium can be found [here](https://github.com/UntrustedInstaller/iridium)
+
+
 ## Features and Commands
 
 ### 📔 Features:
