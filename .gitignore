@@ -1,4 +1,10 @@
-build/os.img
-build/boot.bin
-build/kernel.bin
 build/
+*.img
+*.o
+*.bin
+agents/
+session-*.md
+AGENTS.md
+
+# Non-source assets
+design-docs.md
