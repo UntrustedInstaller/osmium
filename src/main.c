@@ -413,7 +413,7 @@ static const struct cli_command cmd_table[] = {
     {"mem",      3, cmd_mem,     "Show available RAM"},
     {"hexdump",  7, cmd_hexdump, "Dump system memory"},
     {"cpuinfo",  7, cmd_cpuinfo, "CPU vendor and features"},
-    {"exec",     4, cmd_exec,    "Run .BIN from disk by name"},
+    {"exec",     4, cmd_exec,    "Run a program from disk by name"},
 
     // ---- Files ----
     {"ls",       2, cmd_ls,      "List files on disk"},
