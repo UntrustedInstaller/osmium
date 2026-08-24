@@ -1,6 +1,14 @@
 /* src/main.c */
 __asm__(".code16gcc\n");
 
+// So, I haven't touched the code in a while and it occurred to me that the reason this was NEVER
+// running on ANY pre-386 computer is because everything I did used 32x registers/instructions
+// WITHOUT compiling through openwatcom, which if I recall correctly can dumb down 32x instructions to 16x.
+// Will I ever move the toolchain to openwatcom? God knows. I got comfortable with GCC/NASM and now I'm too afraid to move it.
+// If it ain't broke, don't fix it. Who aside from me is even trying to run this on a PC-XT anyways? Who else but me is even running this?
+// If someone comes along and decides to contribute, please be my guest to fix this, but since this is still a one-man army, I'll just keep it on GCC for now.
+// -Untrusted
+
 #include "app/types.h"
 #include "app/apps.h"
 #include "app/fs.h"
@@ -287,6 +295,10 @@ void cmd_exec(const char* args) {
 // =====================================================================
 //  BOOT CHIME
 // =====================================================================
+
+// As shown below, the first of the arguments is the frequency in Hz, and the second is the duration in ms.
+// For example, to play a middle A for one second, you would call play_note(440, 1000) 
+// This does open up the ability for error sounds, system alerts, and music, but that's biting off more than I can chew right now.
 static void play_note(uint16_t freq, uint16_t ms) {
     if (freq < 20) {
         outb(0x61, inb(0x61) & 0xFC);
@@ -311,6 +323,8 @@ static void play_note(uint16_t freq, uint16_t ms) {
     outb(0x61, inb(0x61) & 0xFC);
 }
 
+
+// The actual boot chime; Cmaj7add9
 static void boot_chime(void) {
     play_note(262, 130);  // C4
     play_note(330, 130);  // E4
@@ -318,6 +332,35 @@ static void boot_chime(void) {
     play_note(494, 130);  // B4
     play_note(587, 300);  // D5
 }
+
+// Feels appropriate to add system sound functions here, since the boot chime function is defined here too.
+static void error_chime(void) {
+    play_note(440, 130); //A4
+    play_note(440, 130); //A4
+}
+
+// Don't think there's really anywhere where an error would be fatal. but one can futureproof.
+static void critical_chime(void) {
+    play_note(440, 130); //A4
+    play_note(622, 130); //D#5 approx. D#5 is actually 622.25Hz, but I don't know if I can get that to work with both the PIT and my own code. Plus, people will tell a tritone means no good regardless of if it's in tune or not.
+    play_note(440, 130); //A4
+}
+
+// Not actually sure where I'd call this, like a command going wrong is obviously going to call error_chime() but there's never really a question in the OS right now?
+static void question_chime(void) {
+    play_note(349, 130); //F4
+    play_note(392, 130); //G4
+    play_note(523, 300); //C5
+    // This SHOULD sound like the Windows 10 question chime
+    // Except that arpeggiates a chord, and PITs can't do chords without some clever note wizardry, which I am not putting that much effort into right now.
+}
+
+// Would it be more elegant to have a whole error handler that also includes the chime? Yes. Am I going to refactor my WHOLE code to do that? No.
+// I'll just throw the one function call wherever I want it.
+// All these fun noises just because I'm bored and want some more "color" in the OS.
+
+// TODO: Expose the note function and the system chimes to the API/shell so other non-kernel programs can call and run auditory code.
+// Adds an extra dimension of fun to module development, and could be used for games and other programs that want to use sound.
 
 // =====================================================================
 //  UTILITIES & RENDERING
@@ -399,6 +442,7 @@ void load_theme(void) {
     uint8_t theme_num = config[0];
     if (theme_num > 4) return;
     cur_col = theme_colors[theme_num];
+    question_chime();
 }
 
 // =====================================================================
@@ -481,7 +525,7 @@ void cmd_help(const char* args) {
 #define CMD_MAX 63
 
 static void flash_red(void) {
-    play_note(1000, 30);
+    error_chime();
 
     uint8_t row, col;
     get_cursor_rc(&row, &col);
@@ -576,6 +620,7 @@ void cmd_ls(const char* args) {
 
 void cmd_cat(const char* args) {
     if (!args || args[0] == '\0') {
+        error_chime();
         print_str("ERR: Usage: cat <filename>\r\n");
         return;
     }
@@ -584,6 +629,7 @@ void cmd_cat(const char* args) {
     memset(buf, 0, sizeof(buf));
 
     if (fs_read_file(args, buf, 512)) {
+        error_chime();
         print_str("ERR: File not found\r\n");
         return;
     }
@@ -594,20 +640,23 @@ void cmd_cat(const char* args) {
 
 void cmd_rm(const char* args) {
     if (!args || args[0] == '\0') {
+        error_chime();
         print_str("ERR: Usage: rm <filename>\r\n");
         return;
     }
 
     if (fs_delete_file(args)) {
+        error_chime();
         print_str("ERR: File not found\r\n");
         return;
     }
-
+    question_chime();
     print_str("Deleted.\r\n");
 }
 
 void cmd_mv(const char* args) {
     if (!args || args[0] == '\0') {
+        error_chime();
         print_str("ERR: Usage: mv <source> <dest>\r\n");
         return;
     }
@@ -618,6 +667,7 @@ void cmd_mv(const char* args) {
     src[i] = '\0';
 
     if (args[i] != ' ') {
+        error_chime();
         print_str("ERR: Usage: mv <source> <dest>\r\n");
         return;
     }
@@ -628,16 +678,19 @@ void cmd_mv(const char* args) {
     dst[j] = '\0';
 
     if (fs_rename(src, dst)) {
+        error_chime();
         print_str("ERR: '");
         print_str(src);
         print_str("' not found\r\n");
     } else {
+        question_chime();
         print_str("Renamed.\r\n");
     }
 }
 
 void cmd_cp(const char* args) {
     if (!args || args[0] == '\0') {
+        error_chime();
         print_str("ERR: Usage: cp <source> <dest>\r\n");
         return;
     }
@@ -648,6 +701,7 @@ void cmd_cp(const char* args) {
     src[i] = '\0';
 
     if (args[i] != ' ') {
+        error_chime();
         print_str("ERR: Usage: cp <source> <dest>\r\n");
         return;
     }
@@ -659,12 +713,15 @@ void cmd_cp(const char* args) {
 
     uint8_t r = fs_copy(src, dst, mod_buf, sizeof(mod_buf));
     if (r == 1) {
+        error_chime();
         print_str("ERR: '");
         print_str(src);
         print_str("' not found\r\n");
     } else if (r == 2) {
+        critical_chime();
         print_str("ERR: File too large to copy\r\n");
     } else {
+        question_chime();
         print_str("Copied.\r\n");
     }
 }
@@ -856,6 +913,7 @@ void iridium_main() {
             while (*p == ' ') p++;
 
             if (try_load_and_run(modname, p)) {
+                error_chime();
                 print_str("ERR: Unknown shell command. Type 'help'\r\n");
             }
         }
