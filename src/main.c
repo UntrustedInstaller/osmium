@@ -442,7 +442,6 @@ void load_theme(void) {
     uint8_t theme_num = config[0];
     if (theme_num > 4) return;
     cur_col = theme_colors[theme_num];
-    question_chime();
 }
 
 // =====================================================================
