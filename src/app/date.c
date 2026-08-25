@@ -26,6 +26,7 @@ void cmd_date(const char* args) {
     );
 
     if (carry) {
+        error_chime();
         print_str("ERR: CMOS clock not available\r\n");
         return;
     }
@@ -46,6 +47,7 @@ void cmd_date(const char* args) {
     );
 
     if (carry) {
+        error_chime();
         print_str("ERR: CMOS clock not available\r\n");
         return;
     }

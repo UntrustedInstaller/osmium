@@ -18,6 +18,7 @@ void cmd_poweroff(const char* args) {
     );
 
     if (result) {
+        critical_chime();
         print_str("ERR: APM not available\r\n");
         return;
     }
@@ -35,6 +36,7 @@ void cmd_poweroff(const char* args) {
     );
 
     if (result) {
+        critical_chime();
         print_str("ERR: APM connect failed\r\n");
         return;
     }
@@ -52,6 +54,6 @@ void cmd_poweroff(const char* args) {
         :
         : "eax", "ebx", "ecx", "edx"
     );
-
+    critical_chime();
     print_str("ERR: Power-off failed\r\n");
 }

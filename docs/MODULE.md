@@ -101,6 +101,15 @@ The kernel installs a handler at IVT slot `0x60` (offset `0x0180`). Set `CX` = f
 | 13 | `get_mem_size` | — | `AX` = RAM in KB | Total conventional + extended |
 | 14 | `get_kernel_end` | — | `AX` = kernel footprint (bytes) | End of BSS, for "about" display |
 
+### Sound
+
+| CX | Function | Call | Returns | Notes |
+|----|----------|------|---------|-------|
+| 15 | `play_note` | `AX` = frequency in Hz, `DX` = duration in ms | — | Frequencies below 20 Hz stop the speaker |
+| 16 | `error_chime` | — | — | Plays the standard error chime |
+| 17 | `critical_chime` | — | — | Plays the standard critical chime |
+| 18 | `question_chime` | — | — | Plays the standard question chime |
+
 ### Inline-asm Wrappers (api.h)
 
 Use the wrappers in `src/app/api.h` instead of raw `int 0x60`:
@@ -124,6 +133,9 @@ uint8_t saved = get_cur_col();      // save current colour
 set_cur_col(0x1F);                  // white on blue
 clear_screen();
 set_cur_col(saved);                 // restore
+
+play_note(440, 250);                // Play A4 for 250 ms
+error_chime();
 
 // Read file from disk into module buffer
 static char buf[512];

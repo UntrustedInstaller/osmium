@@ -80,6 +80,7 @@ void module_main(void) {
 
     if (args[0] == '\0') {
         if (!bf_load_saved()) {
+            error_chime();
             print_str("BF: No saved program. Use 'edit HELLO.BF' to create one.\r\n");
         }
         return;
@@ -94,6 +95,7 @@ void module_main(void) {
         static char buf[512];
         my_memset(buf, 0, sizeof(buf));
         if (fs_read_file(args, (uint8_t*)buf, sizeof(buf) - 1)) {
+            error_chime();
             print_str("BF: File not found\r\n");
             return;
         }

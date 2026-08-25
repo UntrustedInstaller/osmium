@@ -8,6 +8,7 @@ static const uint8_t theme_colors[] = {0x1F, 0x02, 0x06, 0x04, 0x07};
 
 void cmd_theme(const char* args) {
     if (!args || args[0] == '\0') {
+        error_chime();
         print_str("ERR: Select theme 0-4\r\n");
         return;
     }
@@ -20,6 +21,7 @@ void cmd_theme(const char* args) {
     else if (choice == '3') { num = 3; cur_col = theme_colors[3]; }
     else if (choice == '4') { num = 4; cur_col = theme_colors[4]; }
     else {
+        error_chime();
         print_str("ERR: Select theme 0-4\r\n");
         return;
     }
@@ -28,6 +30,7 @@ void cmd_theme(const char* args) {
     memset(config, 0, sizeof(config));
     config[0] = num;
     if (fs_write_file(CONFIG_FILE, config, 1)) {
+        critical_chime();
         print_str("ERR: Failed to save theme\r\n");
         return;
     }

@@ -299,7 +299,7 @@ void cmd_exec(const char* args) {
 // As shown below, the first of the arguments is the frequency in Hz, and the second is the duration in ms.
 // For example, to play a middle A for one second, you would call play_note(440, 1000) 
 // This does open up the ability for error sounds, system alerts, and music, but that's biting off more than I can chew right now.
-static void play_note(uint16_t freq, uint16_t ms) {
+void play_note(uint16_t freq, uint16_t ms) {
     if (freq < 20) {
         outb(0x61, inb(0x61) & 0xFC);
         return;
@@ -334,20 +334,20 @@ static void boot_chime(void) {
 }
 
 // Feels appropriate to add system sound functions here, since the boot chime function is defined here too.
-static void error_chime(void) {
+void error_chime(void) {
     play_note(440, 130); //A4
     play_note(440, 130); //A4
 }
 
 // Don't think there's really anywhere where an error would be fatal. but one can futureproof.
-static void critical_chime(void) {
+void critical_chime(void) {
     play_note(440, 130); //A4
     play_note(622, 130); //D#5 approx. D#5 is actually 622.25Hz, but I don't know if I can get that to work with both the PIT and my own code. Plus, people will tell a tritone means no good regardless of if it's in tune or not.
     play_note(440, 130); //A4
 }
 
 // Not actually sure where I'd call this, like a command going wrong is obviously going to call error_chime() but there's never really a question in the OS right now?
-static void question_chime(void) {
+void question_chime(void) {
     play_note(349, 130); //F4
     play_note(392, 130); //G4
     play_note(523, 300); //C5

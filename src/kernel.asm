@@ -24,6 +24,12 @@ extern api_fs_write_file
 ; System info
 extern get_mem_size
 
+; Sound API helpers (src/main.c)
+extern play_note
+extern error_chime
+extern critical_chime
+extern question_chime
+
 ; =====================================================================
 ;    KERNEL INITIALIZATION
 ; =====================================================================
@@ -493,6 +499,14 @@ int60_handler:
     je .get_mem_size
     cmp cx, 14
     je .get_kernel_end
+    cmp cx, 15
+    je .play_note
+    cmp cx, 16
+    je .error_chime
+    cmp cx, 17
+    je .critical_chime
+    cmp cx, 18
+    je .question_chime
     jmp .done
 
 .print_str:
@@ -584,6 +598,29 @@ int60_handler:
 
 .get_kernel_end:
     mov ax, [kernel_mem_end]
+    jmp .done
+
+.play_note:
+    xor ecx, ecx
+    mov cx, dx
+    push ecx
+    xor ecx, ecx
+    mov cx, ax
+    push ecx
+    o32 call play_note
+    add sp, 8
+    jmp .done
+
+.error_chime:
+    o32 call error_chime
+    jmp .done
+
+.critical_chime:
+    o32 call critical_chime
+    jmp .done
+
+.question_chime:
+    o32 call question_chime
     jmp .done
 
 .print_int:

@@ -78,7 +78,7 @@ static void ed_render_line(int r, int* p) {
 
 static void ed_render_status(void) {
     gotoxy(0, 0);
-    print_str("TEXT EDITOR");
+    print_str("OSMIUMOS TEXT EDITOR");
     if (ed_modified) {
         gotoxy(28, 0);
         print_str("[Modified]");
@@ -203,6 +203,7 @@ static void ed_load(const char* fname) {
 static void ed_save(const char* fname) {
     ed_buf[ed_size] = '\0';
     if (fs_write_file(fname, (uint8_t*)ed_buf, (uint32_t)ed_size)) {
+        error_chime();
         print_str("ERR: Failed to save file\r\n");
     }
 }

@@ -26,6 +26,7 @@ void cmd_cpuinfo(const char* args) {
     );
 
     if (!has_cpuid) {
+        error_chime();
         print_str("CPUID not supported\r\n");
         return;
     }

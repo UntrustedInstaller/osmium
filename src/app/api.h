@@ -125,6 +125,22 @@ static inline uint16_t get_kernel_end(void) {
     return end;
 }
 
+static inline void play_note(uint16_t freq, uint16_t ms) {
+    __asm__ __volatile__("int $0x60" : : "c"(15), "a"(freq), "d"(ms) : "memory");
+}
+
+static inline void error_chime(void) {
+    __asm__ __volatile__("int $0x60" : : "c"(16) : "memory");
+}
+
+static inline void critical_chime(void) {
+    __asm__ __volatile__("int $0x60" : : "c"(17) : "memory");
+}
+
+static inline void question_chime(void) {
+    __asm__ __volatile__("int $0x60" : : "c"(18) : "memory");
+}
+
 static inline uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     uint8_t status;
     uint16_t name_off = (uint16_t)(uint32_t)name;

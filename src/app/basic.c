@@ -309,7 +309,7 @@ static void run_prog_from(int start_ip) {
             if (cond && line > 0) {
                 int new_ip = find_line_num(line);
                 if (new_ip >= 0) ip = new_ip;
-                else { print_str("?GOTO NOT FOUND\r\n"); stop_flag = 1; }
+                else { error_chime(); print_str("?GOTO NOT FOUND\r\n"); stop_flag = 1; }
             }
         }
         else if ((rest = match_word(s, "GOTO"))) {
@@ -318,7 +318,7 @@ static void run_prog_from(int start_ip) {
             if (line > 0) {
                 int new_ip = find_line_num(line);
                 if (new_ip >= 0) ip = new_ip;
-                else { print_str("?GOTO NOT FOUND\r\n"); stop_flag = 1; }
+                else { error_chime(); print_str("?GOTO NOT FOUND\r\n"); stop_flag = 1; }
             }
         }
         else if ((rest = match_word(s, "INPUT"))) { cmd_input(rest); }
@@ -361,6 +361,7 @@ static void auto_load(const char* fname) {
     clear_prog();
     my_memset(load_buf, 0, sizeof(load_buf));
     if (fs_read_file(fname, (uint8_t*)load_buf, sizeof(load_buf) - 1)) {
+        error_chime();
         print_str("?LOAD FAILED\r\n");
         return;
     }
@@ -456,6 +457,7 @@ void module_main(void) {
             }
             load_buf[out_len] = '\0';
             if (fs_write_file(fname, (uint8_t*)load_buf, out_len)) {
+                critical_chime();
                 print_str("?SAVE FAILED\r\n");
             } else {
                 print_str("SAVED.\r\n");
@@ -468,7 +470,7 @@ void module_main(void) {
                 int new_ip = find_line_num(line);
                 if (new_ip >= 0) {
                     run_prog_from(new_ip);
-                } else { print_str("?GOTO not found\r\n"); }
+                } else { error_chime(); print_str("?GOTO not found\r\n"); }
             }
         }
         else if ((rest = match_word(s, "LOAD"))) {
@@ -486,6 +488,7 @@ void module_main(void) {
                 clear_prog();
                 my_memset(load_buf, 0, sizeof(load_buf));
                 if (fs_read_file(fname, (uint8_t*)load_buf, sizeof(load_buf) - 1)) {
+                    critical_chime();
                     print_str("?LOAD FAILED\r\n");
                 } else {
                     int i = 0;
@@ -525,8 +528,9 @@ void module_main(void) {
                     const char* t2 = t + 1;
                     skip_spaces(&t2);
                     if (*t2 == '=') cmd_let(s);
-                    else print_str("?WHAT\r\n");
+                    else { critical_chime(); print_str("?WHAT\r\n"); }
                 } else {
+                    critical_chime();
                     print_str("?WHAT\r\n");
                 }
             }

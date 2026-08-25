@@ -4,6 +4,7 @@ __asm__(".code16gcc\n");
 #define MAX_SNAKE 200
 #define TICK_US 150000
 
+
 static uint8_t bx[MAX_SNAKE], by[MAX_SNAKE];
 static int slen, sdir, snext;
 static int growing, gameover;
@@ -74,6 +75,7 @@ static void tick(void) {
 
     if (nhx == fx && nhy == fy) {
         bx[slen] = otx; by[slen] = oty; slen++; sscore += 10; growing = 1;
+        play_note(1000, 50);
         spawn_food();
     } else growing = 0;
 
@@ -126,6 +128,7 @@ void module_main(void) {
         tick();
     }
 
+    error_chime();
     gotoxy(30, 12); print_str("GAME OVER");
     gotoxy(30, 13); print_str("Score: "); print_int(sscore);
     gotoxy(26, 14); print_str("Press any key...");
