@@ -1,6 +1,9 @@
 __asm__(".code16gcc\n");
 #include "fs.h"
 
+// TODO: Add proper directory support, directory walking, mkdir, rmdir, make sure directories are copiable too.
+// Filesystem currently TELLS computers its FAT12 but technically it's only partially FAT12 without directories
+
 void* memset(void* s, int c, int n) {
     uint8_t* p = (uint8_t*)s;
     for (int i = 0; i < n; i++) p[i] = (uint8_t)c;

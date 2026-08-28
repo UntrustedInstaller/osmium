@@ -116,7 +116,7 @@ boot_start:
 
 dsk_err:
     mov ah, 0x0e
-    mov al, 'E'
+    mov al, 'GENERAL DISK READ FAIL!'
     int 0x10
 .halt:
     cli
