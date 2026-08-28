@@ -27,6 +27,7 @@ void cmd_date(const char* args);
 void cmd_cpuinfo(const char* args);
 void cmd_poweroff(const char* args);
 void cmd_ls(const char* args);
+void cmd_df(const char* args);
 void cmd_cat(const char* args);
 void cmd_rm(const char* args);
 void cmd_mv(const char* args);

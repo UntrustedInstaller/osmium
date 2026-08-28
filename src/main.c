@@ -460,6 +460,7 @@ static const struct cli_command cmd_table[] = {
 
     // ---- Files ----
     {"ls",       2, cmd_ls,      "List files on disk"},
+    {"df",       2, cmd_df,      "Show free disk space"},
     {"cat",      3, cmd_cat,     "View a text file"},
     {"rm",       2, cmd_rm,      "Remove a file"},
     {"mv",       2, cmd_mv,      "Rename a file"},
@@ -480,7 +481,7 @@ static const struct cli_command cmd_table[] = {
 
 #define CMD_COUNT (sizeof(cmd_table) / sizeof(struct cli_command))
 
-static const uint8_t help_sections[] = {8, 13, 20};
+static const uint8_t help_sections[] = {9, 15, 21};
 
 static void more_prompt(int* count) {
     (*count)++;
@@ -615,6 +616,31 @@ static void buf_delete_at(char* buf, int* len, int* pos) {
 // =====================================================================
 void cmd_ls(const char* args) {
     fs_list_dir();
+}
+
+void cmd_df(const char* args) {
+    if (!fs_initialized) fs_init();
+
+    uint16_t free_clusters = 0;
+    for (uint16_t cluster = 2; cluster <= fs.total_clusters + 1; cluster++)
+        if (fs_next_cluster(cluster) == FAT_FREE) free_clusters++;
+
+    uint32_t cluster_bytes = (uint32_t)fs.sectors_per_cluster * fs.bytes_per_sector;
+    uint16_t total_kb = ((uint32_t)fs.total_clusters * cluster_bytes) / 1024;
+    uint16_t free_kb = ((uint32_t)free_clusters * cluster_bytes) / 1024;
+    uint16_t used_kb = total_kb - free_kb;
+    uint16_t used_percent = total_kb ? ((uint32_t)used_kb * 100) / total_kb : 0;
+
+    print_str("Filesystem  Size(KB)  Used(KB)  Avail(KB)  Use%\r\n");
+    print_str("FAT12       ");
+    print_int(total_kb);
+    print_str("        ");
+    print_int(used_kb);
+    print_str("        ");
+    print_int(free_kb);
+    print_str("         ");
+    print_int(used_percent);
+    print_str("%\r\n");
 }
 
 void cmd_cat(const char* args) {

@@ -23,6 +23,7 @@ typedef struct {
 } filesystem_t;
 
 extern filesystem_t fs;
+extern uint8_t fs_initialized;
 
 void fs_init(void);
 uint16_t fs_cluster_to_lba(uint16_t cluster);
