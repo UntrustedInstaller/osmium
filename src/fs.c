@@ -140,7 +140,7 @@ void fs_list_dir(void) {
     int max = fs.root_dir_sectors * 512 / 32;
     int count = 0;
 
-    print_str("Name          Attrs  Size    Cluster\r\n");
+    print_str("Name          Type   Size    Cluster\r\n");
     print_str("------------- ------ ------- -------\r\n");
 
     for (int i = 0; i < max; i++) {
