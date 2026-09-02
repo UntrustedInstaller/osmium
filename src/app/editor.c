@@ -96,7 +96,7 @@ static void ed_render_status(void) {
     print_int(ed_cursor - ls + 1);
 
     gotoxy(0, 24);
-    print_str("F2=Save  Ctrl+Q=Quit  INS");
+    print_str("Ctrl+S or F2 to Save | Ctrl+Q or Esc to Quit | INS");
 }
 
 static void ed_set_cursor(void) {
