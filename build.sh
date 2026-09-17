@@ -90,6 +90,7 @@ build_module "snake"
 build_module "bf"
 build_module "editor"
 build_module "basic"
+build_module "music"
 
 # 9. Seed files into the FAT12 filesystem
 echo "[*] Seeding files into FAT12 filesystem..."
@@ -102,17 +103,15 @@ printf '%s' '++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+
 
 # Demo BASIC program and text document
 printf '10 PRINT "OSMIUM BASIC DEMO"\r\n20 PRINT "2 + 2 = "; 2 + 2\r\n30' > build/demo.bas
-printf 'Welcome to OsmiumOS!\r\n\r\nThis is the bundled demo text file.\r\nOpen it with: edit README.TXT\r\n\r\n OsmiumOS bundles itself with this editor program and file in order to suit your editing needs.\r\n You can edit raw text, Brainfuck, and BASIC files in this editor, and save them too.\r\n Just type "edit [NAME].bf, [NAME].bas, [NAME].txt"' > build/README.txt
 
 mcopy -i build/os.img build/config.bin ::CONFIG.BIN  2>/dev/null
 mcopy -i build/os.img build/hello.bf  ::HELLO.BF     2>/dev/null
 mcopy -i build/os.img build/demo.bas  ::DEMO.BAS     2>/dev/null
-mcopy -i build/os.img build/README.txt  ::README.TXT     2>/dev/null
 mcopy -i build/os.img build/snake.mod ::SNAKE.BIN    2>/dev/null
 mcopy -i build/os.img build/bf.mod     ::BRAINFUC.BIN 2>/dev/null
 mcopy -i build/os.img build/editor.mod ::EDIT.BIN     2>/dev/null
 mcopy -i build/os.img build/basic.mod  ::BASIC.BIN     2>/dev/null
-echo "[+] Files seeded: CONFIG.BIN, HELLO.BF, DEMO.BAS, README.TXT, SNAKE.BIN, BRAINFUC.BIN, EDIT.BIN, BASIC.BIN"
+echo "[+] Files seeded: CONFIG.BIN, HELLO.BF, DEMO.BAS, SNAKE.BIN, BRAINFUC.BIN, EDIT.BIN, BASIC.BIN"
 
 echo "[+] Build complete: build/os.img created successfully!"
 echo "----------------------------------------------"

@@ -1,0 +1,20 @@
+--2026-09-10 12:06:27--  https://update.code.visualstudio.com/commit:88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/server-linux-x64/stable
+Loaded CA certificate '/etc/ssl/certs/ca-certificates.crt'
+Resolving update.code.visualstudio.com (update.code.visualstudio.com)... 13.107.253.38, 13.107.226.38, 2620:1ec:48:1::38, ...
+Connecting to update.code.visualstudio.com (update.code.visualstudio.com)|13.107.253.38|:443... connected.
+WARNING: Could not save SSL session data for socket 4
+Failed writing HTTP request: The specified session has been invalidated for some reason..
+Retrying.
+
+--2026-09-10 12:06:49--  (try: 2)  https://update.code.visualstudio.com/commit:88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/server-linux-x64/stable
+Connecting to update.code.visualstudio.com (update.code.visualstudio.com)|13.107.253.38|:443... connected.
+HTTP request sent, awaiting response... 302 Found
+Location: https://vscode.download.prss.microsoft.com/dbazure/download/stable/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/vscode-server-linux-x64.tar.gz [following]
+--2026-09-10 12:06:51--  https://vscode.download.prss.microsoft.com/dbazure/download/stable/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f/vscode-server-linux-x64.tar.gz
+Resolving vscode.download.prss.microsoft.com (vscode.download.prss.microsoft.com)... 23.218.145.106, 23.218.145.112, 2600:1402:9800:f04::17d5:1a09, ...
+Connecting to vscode.download.prss.microsoft.com (vscode.download.prss.microsoft.com)|23.218.145.106|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 228928288 (218M) [application/octet-stream]
+Saving to: '/home/ribtibble/.vscode-server/bin/88e44fa0e00b08f7758b4f6d05632e4fd5e4df6f-1789059927.tar.gz'
+
+rver/bin/88e44fa0e00b08f7758b   1%[                                                  ]   3.24M  --.-KB/s    eta 9h 59m ver/bin/88e44fa0e00b08f7758b4   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 1m er/bin/88e44fa0e00b08f7758b4f   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 1m r/bin/88e44fa0e00b08f7758b4f6   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 3m /bin/88e44fa0e00b08f7758b4f6d   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 3m bin/88e44fa0e00b08f7758b4f6d0   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 5m in/88e44fa0e00b08f7758b4f6d05   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 5m n/88e44fa0e00b08f7758b4f6d056   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 7m /88e44fa0e00b08f7758b4f6d0563   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 7m 88e44fa0e00b08f7758b4f6d05632   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 9m 8e44fa0e00b08f7758b4f6d05632e   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 9m e44fa0e00b08f7758b4f6d05632e4   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 12m44fa0e00b08f7758b4f6d05632e4f   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 12m4fa0e00b08f7758b4f6d05632e4fd   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 14mfa0e00b08f7758b4f6d05632e4fd5   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 14ma0e00b08f7758b4f6d05632e4fd5e   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 16m0e00b08f7758b4f6d05632e4fd5e4   1%[                                                  ]   3.24M  --.-KB/s    eta 10h 16m

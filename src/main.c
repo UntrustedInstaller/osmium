@@ -472,11 +472,11 @@ static const struct cli_command cmd_table[] = {
     {"brainfuck", 9, cmd_brainfuck, "Run Brainfuck code"},
     {"edit",     4, cmd_edit,    "Text editor"},
     {"basic",    5, cmd_basic,   "BASIC interpreter"},
-    {"snake",    5, cmd_snake,   "Play Snake game"},
+    {"snake",    5, cmd_snake,   "Play Snake"},
 
     // ---- System ----
     {"reboot",   6, cmd_reboot,  "Reboot the system"},
-    {"poweroff", 8, cmd_poweroff,"Shut down the system"},
+    {"poweroff", 8, cmd_poweroff,"Shut down the system (Requires APM)"},
 };
 
 #define CMD_COUNT (sizeof(cmd_table) / sizeof(struct cli_command))
@@ -675,7 +675,6 @@ void cmd_rm(const char* args) {
         print_str("ERR: File not found\r\n");
         return;
     }
-    question_chime();
     print_str("Deleted.\r\n");
 }
 
@@ -708,7 +707,6 @@ void cmd_mv(const char* args) {
         print_str(src);
         print_str("' not found\r\n");
     } else {
-        question_chime();
         print_str("Renamed.\r\n");
     }
 }
@@ -746,7 +744,6 @@ void cmd_cp(const char* args) {
         critical_chime();
         print_str("ERR: File too large to copy\r\n");
     } else {
-        question_chime();
         print_str("Copied.\r\n");
     }
 }
@@ -939,7 +936,7 @@ void iridium_main() {
 
             if (try_load_and_run(modname, p)) {
                 error_chime();
-                print_str("ERR: Unknown shell command. Type 'help'\r\n");
+                print_str("ERR: Unknown shell command. Type 'help' for a list of commands.\r\n");
             }
         }
 

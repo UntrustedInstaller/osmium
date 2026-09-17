@@ -27,6 +27,15 @@ static void poke_char(uint8_t col, uint8_t row, char c) {
     );
 }
 
+void end_chime() {
+    play_note(523,130);
+    play_note(493,130);
+    play_note(466,130);
+    play_note(440,130);
+    play_note(415,300);
+
+}
+
 static uint16_t rng(void) {
     rng_state ^= rng_state << 7;
     rng_state ^= rng_state >> 9;
@@ -128,7 +137,7 @@ void module_main(void) {
         tick();
     }
 
-    error_chime();
+    end_chime();
     gotoxy(30, 12); print_str("GAME OVER");
     gotoxy(30, 13); print_str("Score: "); print_int(sscore);
     gotoxy(26, 14); print_str("Press any key...");
