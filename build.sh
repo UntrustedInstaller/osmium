@@ -90,7 +90,6 @@ build_module "snake"
 build_module "bf"
 build_module "editor"
 build_module "basic"
-build_module "music"
 
 # 9. Seed files into the FAT12 filesystem
 echo "[*] Seeding files into FAT12 filesystem..."
