@@ -33,10 +33,10 @@
 Standard 1.44MB floppy geometry:
 
 - 80 cylinders, 2 heads, 18 sectors/track
-- 73 reserved sectors (boot + kernel occupy most of these)
+- 79 reserved sectors (boot + the 78 kernel sectors the bootloader reads)
 - 2 FATs, 9 sectors each
 - 224 root directory entries (14 sectors)
-- Data area: ~2847 clusters, 1 sector per cluster
+- Data area: ~2769 clusters, 1 sector per cluster
 
 The FAT and root directory are cached in kernel BSS at boot time. Writes go through `flush_fat()` and `flush_root()` which write both FAT copies.
 
@@ -65,6 +65,7 @@ API functions (see MODULE.md for full table):
 | 9–10 | **Filesystem**: fs_read_file, fs_write_file (module-safe, copies via rep movsb through mod_buf) |
 | 11–12 | Colour: get_cur_col, set_cur_col |
 | 13–14 | System: get_mem_size, get_kernel_end |
+| 15–18 | Sound: play_note, error_chime, critical_chime, question_chime |
 
 Calls 9–10 are the most complex: they copy the filename from the module segment to a kernel buffer, call the C FS functions, and copy data across segments via `rep movsb` through the kernel's `mod_buf` staging area. See `api_fs_read_file()` / `api_fs_write_file()` in `src/main.c`.
 
@@ -73,7 +74,7 @@ Calls 9–10 are the most complex: they copy the filename from the module segmen
 | File | What it does |
 |------|-------------|
 | `src/boot.asm` | Stage 1 bootloader — loads kernel, jumps to it |
-| `src/kernel.asm` | Stage 2 entry, HAL (print, disk I/O, scroll), INT 60h handler (CX=0-14), multi-sector read |
+| `src/kernel.asm` | Stage 2 entry, HAL (print, disk I/O, scroll), INT 60h handler (CX=0-18), multi-sector read |
 | `src/main.c` | Shell, command table, module loading, HAL wrappers, FS API bridge (api_fs_read/write_file) |
 | `src/fs.c` | FAT12 driver — read/write/delete/rename/copy/list, multi-sector read |
 | `src/module_entry.asm` | Module stub — saves kernel SS:SP, sets DS=SS=0x2000, zeroes BSS, calls module_main() |
