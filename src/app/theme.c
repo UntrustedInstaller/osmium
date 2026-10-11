@@ -7,7 +7,7 @@ extern uint8_t cur_col;
 static const uint8_t theme_colors[] = {0x1F, 0x02, 0x06, 0x04, 0x07};
 
 void cmd_theme(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (flags & SW_LIST) {

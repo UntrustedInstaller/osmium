@@ -2,7 +2,7 @@ __asm__(".code16gcc\n");
 #include "apps.h"
 
 void cmd_echo(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
     print_str(args ? args : "");
     if (!(flags & SW_N)) print_str("\r\n");

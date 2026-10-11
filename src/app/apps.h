@@ -16,17 +16,19 @@ struct cli_command {
 };
 
 // ---- Command switches (bit flags parsed by parse_switches) ----
-#define SW_RECURSIVE 0x01   // -r
-#define SW_FORCE     0x02   // -f
-#define SW_PARENTS   0x04   // -p
-#define SW_ALL       0x08   // -a
-#define SW_N         0x10   // -n
-#define SW_HUMAN     0x20   // -h
-#define SW_LIST      0x40   // -l
+#define SW_RECURSIVE   0x001   // -r
+#define SW_FORCE       0x002   // -f
+#define SW_PARENTS     0x004   // -p
+#define SW_ALL         0x008   // -a
+#define SW_N           0x010   // -n
+#define SW_HUMAN       0x020   // -h
+#define SW_LIST        0x040   // -l
+#define SW_INSENSITIVE 0x100   // -i (grep)
+#define SW_INVERT      0x200   // -v (grep)
 
 // Peels leading "-x" switches (e.g. "-rf", "-r -f") off args, ORs the
 // matching SW_* bits into *flags, and returns the first non-switch argument.
-const char* parse_switches(const char* args, uint8_t* flags);
+const char* parse_switches(const char* args, uint16_t* flags);
 
 // Forward declarations for application entry points
 void cmd_help(const char* args);
@@ -43,6 +45,7 @@ void cmd_poweroff(const char* args);
 void cmd_ls(const char* args);
 void cmd_df(const char* args);
 void cmd_cat(const char* args);
+void cmd_grep(const char* args);
 void cmd_rm(const char* args);
 void cmd_mv(const char* args);
 void cmd_cp(const char* args);

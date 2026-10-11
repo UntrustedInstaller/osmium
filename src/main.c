@@ -448,6 +448,7 @@ static const struct cli_command cmd_table[] = {
     {"ls",       2, cmd_ls,      "List files in current dir", "[-a]"},
     {"df",       2, cmd_df,      "Show free disk space", "[-h]"},
     {"cat",      3, cmd_cat,     "View a text file", "[-n] <file>"},
+    {"grep",     4, cmd_grep,    "Search a file for text", "[-i] [-n] [-v] <pattern> <file>"},
     {"cd",       2, cmd_cd,      "Change directory", "[path | -]"},
     {"pwd",      3, cmd_pwd,     "Show current directory", ""},
     {"mkdir",    5, cmd_mkdir,   "Create a directory", "[-p] <path>"},
@@ -471,7 +472,7 @@ static const struct cli_command cmd_table[] = {
 
 #define CMD_COUNT (sizeof(cmd_table) / sizeof(struct cli_command))
 
-static const uint8_t help_sections[] = {8, 18, 24};
+static const uint8_t help_sections[] = {8, 19, 25};
 
 static void more_prompt(int* count) {
     (*count)++;
@@ -522,7 +523,7 @@ static uint8_t prom_len(void) {
 }
 
 static void prom_print(void) {
-    if (fs_get_cwd() == 0) { print_str("OS>"); return; }
+    if (fs_get_cwd() == 0) { print_str("OS:\>"); return; }
     print_str("OS:");
     print_str(fs_get_cwd_path());
     print_char('>');
@@ -617,7 +618,7 @@ static void buf_delete_at(char* buf, int* len, int* pos) {
 
 //  FILESYSTEM COMMANDS
 void cmd_ls(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
     fs_list_dir((flags & SW_ALL) ? 1 : 0);
 }
@@ -639,7 +640,7 @@ static void print_size_h(uint16_t kb, uint8_t human) {
 }
 
 void cmd_df(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!fs_initialized) fs_init();
@@ -669,7 +670,7 @@ void cmd_df(const char* args) {
 }
 
 void cmd_cat(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!args || args[0] == '\0') {
@@ -706,23 +707,111 @@ void cmd_cat(const char* args) {
     }
 }
 
+// Case-fold ASCII (grep -i).
+static int ascii_lower(int c) {
+    return (c >= 'A' && c <= 'Z') ? c + 32 : c;
+}
+
+// Returns 1 if `pat` occurs within the first `len` bytes of `line`.
+static int line_matches(const char* line, int len, const char* pat, uint8_t icase) {
+    int plen = 0;
+    while (pat[plen]) plen++;
+    if (plen == 0) return 1;
+    if (plen > len) return 0;
+
+    for (int i = 0; i + plen <= len; i++) {
+        int j = 0;
+        while (j < plen) {
+            char a = line[i + j];
+            char b = pat[j];
+            if (icase) { a = (char)ascii_lower(a); b = (char)ascii_lower(b); }
+            if (a != b) break;
+            j++;
+        }
+        if (j == plen) return 1;
+    }
+    return 0;
+}
+
+void cmd_grep(const char* args) {
+    uint16_t flags;
+    args = parse_switches(args, &flags);
+
+    if (!args || args[0] == '\0') {
+        error_chime();
+        print_str("ERR: Usage: grep [-i] [-n] [-v] <pattern> <file>\r\n");
+        return;
+    }
+
+    char pat[65], file[65];
+    int i = 0;
+    while (args[i] && args[i] != ' ' && i < 64) { pat[i] = args[i]; i++; }
+    pat[i] = '\0';
+
+    if (args[i] != ' ') {
+        error_chime();
+        print_str("ERR: Usage: grep [-i] [-n] [-v] <pattern> <file>\r\n");
+        return;
+    }
+    while (args[i] == ' ') i++;
+
+    int j = 0;
+    while (args[i] && args[i] != ' ' && j < 64) { file[j] = args[i]; i++; j++; }
+    file[j] = '\0';
+
+    memset(mod_buf, 0, sizeof(mod_buf));
+    if (fs_read_file(file, mod_buf, sizeof(mod_buf) - 1)) {
+        error_chime();
+        print_str("ERR: File not found\r\n");
+        return;
+    }
+
+    const char* p = (const char*)mod_buf;
+    int line_no = 1;
+    int matched = 0;
+    uint8_t icase = (flags & SW_INSENSITIVE) ? 1 : 0;
+    uint8_t invert = (flags & SW_INVERT) ? 1 : 0;
+
+    while (*p) {
+        const char* end = p;
+        while (*end && *end != '\n') end++;
+
+        int len = (int)(end - p);
+        if (len > 0 && p[len - 1] == '\r') len--;
+
+        if (line_matches(p, len, pat, icase) ^ invert) {
+            matched++;
+            if (flags & SW_N) { print_int((uint16_t)line_no); print_char(':'); }
+            for (int k = 0; k < len; k++) print_char(p[k]);
+            print_str("\r\n");
+        }
+
+        if (*end == '\n') { p = end + 1; line_no++; }
+        else break;
+    }
+
+    if (!matched) print_str("(no matches)\r\n");
+}
+
 //  COMMAND SWITCHES
 // Peels leading "-x" switches (e.g. "-rf", "-r -f") off args, ORs the
 // matching SW_* bits into *flags, and returns the first non-switch argument.
 // Unknown switch letters are ignored.
-const char* parse_switches(const char* args, uint8_t* flags) {
+const char* parse_switches(const char* args, uint16_t* flags) {
     *flags = 0;
     while (args && *args == '-') {
         const char* p = args + 1;
         while (*p && *p != ' ') {
             switch (*p) {
-                case 'r': case 'R': *flags |= SW_RECURSIVE; break;
-                case 'f': case 'F': *flags |= SW_FORCE;     break;
-                case 'p': case 'P': *flags |= SW_PARENTS;   break;
-                case 'a': case 'A': *flags |= SW_ALL;       break;
-                case 'n': case 'N': *flags |= SW_N;         break;
-                case 'h': case 'H': *flags |= SW_HUMAN;     break;
-                case 'l': case 'L': *flags |= SW_LIST;      break;
+                case 'r': case 'R': *flags |= SW_RECURSIVE;   break;
+                case 'f': case 'F': *flags |= SW_FORCE;       break;
+                case 'p': case 'P': *flags |= SW_PARENTS;     break;
+                case 'a': case 'A': *flags |= SW_ALL;         break;
+                case 'n': case 'N': *flags |= SW_N;           break;
+                case 'h': case 'H': *flags |= SW_HUMAN;       break;
+                case 'l': case 'L': *flags |= SW_LIST;        break;
+                case 'i': case 'I': *flags |= SW_INSENSITIVE; break;
+                case 'v': case 'V': *flags |= SW_INVERT;      break;
                 default: break;
             }
             p++;
@@ -786,7 +875,7 @@ static void remove_path(const char* path, uint8_t flags) {
 }
 
 void cmd_rm(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!args || args[0] == '\0') {
@@ -799,7 +888,7 @@ void cmd_rm(const char* args) {
 }
 
 void cmd_mv(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!args || args[0] == '\0') {
@@ -841,7 +930,7 @@ void cmd_mv(const char* args) {
 }
 
 void cmd_cp(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!args || args[0] == '\0') {
@@ -936,7 +1025,7 @@ void cmd_cd(const char* args) {
 }
 
 void cmd_mkdir(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!args || args[0] == '\0') {
@@ -955,7 +1044,7 @@ void cmd_mkdir(const char* args) {
 }
 
 void cmd_rmdir(const char* args) {
-    uint8_t flags;
+    uint16_t flags;
     args = parse_switches(args, &flags);
 
     if (!args || args[0] == '\0') {
