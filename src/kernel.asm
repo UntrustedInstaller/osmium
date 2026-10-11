@@ -412,7 +412,7 @@ global boot_drive
 boot_drive  db 0
 
 ; Staging buffer for filenames passed via module FS API (CX=9,10)
-api_fname   times 13 db 0
+api_fname   times 64 db 0
 
 global kernel_mem_end
 kernel_mem_end dw 0
@@ -663,7 +663,7 @@ int60_handler:
     push dx
     push bx
 
-    ; Copy filename from ES:BX to api_fname (up to 12 chars + null)
+    ; Copy filename from ES:BX to api_fname (up to 63 chars + null)
     mov si, bx
     mov di, api_fname
     cld
@@ -671,7 +671,7 @@ int60_handler:
     mov al, [es:si]
     cmp al, 0
     je .fr_cp_dn
-    cmp di, api_fname + 12
+    cmp di, api_fname + 63
     je .fr_cp_dn
     mov [di], al
     inc si
@@ -711,7 +711,7 @@ int60_handler:
     mov al, [es:si]
     cmp al, 0
     je .fw_cp_dn
-    cmp di, api_fname + 12
+    cmp di, api_fname + 63
     je .fw_cp_dn
     mov [di], al
     inc si

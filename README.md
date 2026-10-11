@@ -9,8 +9,10 @@ OsmiumOS boots from a FAT12 floppy disk into an interactive shell with built-in 
 ## Features
 
 - **Real-mode 16-bit x86** — no protected mode, no UEFI, no memory model
-- **FAT12 filesystem** — read files from disk via BIOS INT 13h
-- **Interactive shell** — commands: `help`, `clear`, `dir`, `df`, `echo`, `theme`, `mem`, `hexdump`, `reboot`, and more
+- **FAT12 filesystem** — read and write files on disk via BIOS INT 13h
+- **Interactive shell** — commands: `help`, `clear`, `ls`, `cd`, `df`, `cat`, `mkdir`, `rmdir`, `cp`, `mv`, `rm`, `echo`, `theme`, `mem`, `hexdump`, `reboot`, and more
+- **Directories** — nested folders, a path-aware prompt (`OS:\DIR\>`), and (`/`) or (`\`) separators
+- **Command switches** — `ls -a`, `cat -n`, `mkdir -p`, `cp -r`, `mv -f`, `rm -rf`, `rmdir -r`, `cd -`, `df -h`, `hexdump -n`, `echo -n`, `theme -l`, plus `-h`/`--help` on every command
 - **Loadable modules** — snake, brainfuck interpreter, text editor, BASIC interpreter
 - **Interrupt-driven module API** — user modules communicate with the kernel through INT 60h
 - **Theme system** — 5 color schemes for the CLI

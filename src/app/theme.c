@@ -7,6 +7,19 @@ extern uint8_t cur_col;
 static const uint8_t theme_colors[] = {0x1F, 0x02, 0x06, 0x04, 0x07};
 
 void cmd_theme(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
+    if (flags & SW_LIST) {
+        print_str("Themes:\r\n");
+        print_str("  0  Blue (default)\r\n");
+        print_str("  1  Green\r\n");
+        print_str("  2  Brown\r\n");
+        print_str("  3  Red\r\n");
+        print_str("  4  Grey\r\n");
+        return;
+    }
+
     if (!args || args[0] == '\0') {
         error_chime();
         print_str("ERR: Select theme 0-4\r\n");

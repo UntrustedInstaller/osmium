@@ -1,13 +1,6 @@
 /* src/main.c */
 __asm__(".code16gcc\n");
 
-// So, I haven't touched the code in a while and it occurred to me that the reason this was NEVER
-// running on ANY pre-386 computer is because everything I did used 32x registers/instructions
-// WITHOUT compiling through openwatcom, which if I recall correctly can dumb down 32x instructions to 16x.
-// Will I ever move the toolchain to openwatcom? God knows. I got comfortable with GCC/NASM and now I'm too afraid to move it.
-// If it ain't broke, don't fix it. Who aside from me is even trying to run this on a PC-XT anyways? Who else but me is even running this?
-// If someone comes along and decides to contribute, please be my guest to fix this, but since this is still a one-man army, I'll just keep it on GCC for now.
-// -Untrusted
 
 #include "app/types.h"
 #include "app/apps.h"
@@ -17,9 +10,7 @@ uint8_t cur_col = 0x1F;
 extern uint8_t boot_drive;
 extern void int60_handler(void);
 
-// =====================================================================
 //  HARDWARE ABSTRACTION LAYER
-// =====================================================================
 void outb(uint16_t port, uint8_t val) {
     __asm__ __volatile__ ("outb %0, %1" : : "a"(val), "Nd"(port));
 }
@@ -128,9 +119,7 @@ uint8_t read_sectors(uint16_t lba, uint16_t count, void* buffer) {
     return (uint8_t)result;
 }
 
-// =====================================================================
 //  MODULE LOADING SYSTEM
-// =====================================================================
 static void install_api(void) {
     uint16_t off = (uint16_t)(uint32_t)&int60_handler;
     __asm__ __volatile__(
@@ -197,9 +186,9 @@ static void cmd_edit(const char* args)      { try_load_and_run("edit", args); }
 static void cmd_basic(const char* args)     { try_load_and_run("basic", args); }
 static void cmd_snake(const char* args)     { try_load_and_run("snake", args); }
 
-// =====================================================================
+
 //  MODULE FS API BRIDGE (called from INT 60h CX=9,10)
-// =====================================================================
+
 // Called with DS=kernel seg, ES=module seg. We copy data across segments
 // using rep movsb: DS:SI → ES:DI (read) or swapped (write).
 
@@ -244,25 +233,35 @@ uint8_t api_fs_write_file(const char* name, uint16_t src_off, uint16_t size) {
 }
 
 static int try_load_and_run(const char* name, const char* args) {
-    char fname[13];
+    char fname[64];
     int has_dot = 0;
+    int nlen = 0;
 
-    for (int i = 0; name[i]; i++)
-        if (name[i] == '.') { has_dot = 1; break; }
-
-    if (!has_dot) {
-        int i;
-        for (i = 0; i < 8 && name[i]; i++) fname[i] = name[i];
-        fname[i++] = '.'; fname[i++] = 'B'; fname[i++] = 'I'; fname[i++] = 'N';
-        fname[i] = '\0';
-    } else {
-        int i;
-        for (i = 0; i < 12 && name[i]; i++) fname[i] = name[i];
-        fname[i] = '\0';
+    while (name[nlen] && nlen < 63) {
+        if (name[nlen] == '.') has_dot = 1;
+        nlen++;
     }
+    if (!has_dot && nlen + 4 > 63) nlen = 59;
+
+    int i;
+    for (i = 0; i < nlen; i++) fname[i] = name[i];
+    if (!has_dot) {
+        fname[i++] = '.'; fname[i++] = 'B'; fname[i++] = 'I'; fname[i++] = 'N';
+    }
+    fname[i] = '\0';
 
     memset(mod_buf, 0, sizeof(mod_buf));
-    if (fs_read_file(fname, mod_buf, sizeof(mod_buf))) return 1;
+    if (fs_read_file(fname, mod_buf, sizeof(mod_buf))) {
+        // Not found relative to the current directory — modules (edit, basic,
+        // snake, brainfuck) live in the root, so retry with an absolute path.
+        char root[64];
+        int k = 0;
+        if (fname[0] != '\\' && fname[0] != '/') root[k++] = '\\';
+        for (int j = 0; fname[j] && k < 63; j++) root[k++] = fname[j];
+        root[k] = '\0';
+        memset(mod_buf, 0, sizeof(mod_buf));
+        if (fs_read_file(root, mod_buf, sizeof(mod_buf))) return 1;
+    }
     call_module_buf(args);
     return 0;
 }
@@ -273,9 +272,9 @@ void cmd_exec(const char* args) {
         return;
     }
 
-    char name[13];
+    char name[64];
     int i = 0;
-    while (args[i] && args[i] != ' ' && i < 12) {
+    while (args[i] && args[i] != ' ' && i < 63) {
         name[i] = args[i];
         i++;
     }
@@ -292,9 +291,7 @@ void cmd_exec(const char* args) {
     }
 }
 
-// =====================================================================
 //  BOOT CHIME
-// =====================================================================
 
 // As shown below, the first of the arguments is the frequency in Hz, and the second is the duration in ms.
 // For example, to play a middle A for one second, you would call play_note(440, 1000) 
@@ -355,16 +352,9 @@ void question_chime(void) {
     // Except that arpeggiates a chord, and PITs can't do chords without some clever note wizardry, which I am not putting that much effort into right now.
 }
 
-// Would it be more elegant to have a whole error handler that also includes the chime? Yes. Am I going to refactor my WHOLE code to do that? No.
-// I'll just throw the one function call wherever I want it.
-// All these fun noises just because I'm bored and want some more "color" in the OS.
 
-// TODO: Expose the note function and the system chimes to the API/shell so other non-kernel programs can call and run auditory code.
-// Adds an extra dimension of fun to module development, and could be used for games and other programs that want to use sound.
 
-// =====================================================================
 //  UTILITIES & RENDERING
-// =====================================================================
 int strcmp(const char* s1, const char* s2) {
     while (*s1 && (*s1 == *s2)) { s1++; s2++; }
     return *(const unsigned char*)s1 - *(const unsigned char*)s2;
@@ -426,9 +416,7 @@ void hexdump(const void* addr, int count) {
     }
 }
 
-// =====================================================================
 //  THEME PERSISTENCE
-// =====================================================================
 static const uint8_t theme_colors[] = {0x1F, 0x02, 0x06, 0x04, 0x0F};
 
 void load_theme(void) {
@@ -444,44 +432,46 @@ void load_theme(void) {
     cur_col = theme_colors[theme_num];
 }
 
-// =====================================================================
 //  COMMAND TABLE
-// =====================================================================
 static const struct cli_command cmd_table[] = {
     // ---- General ----
-    {"help",     4, cmd_help,    "List all commands"},
-    {"clear",    5, cmd_clear,   "Clear the screen"},
-    {"echo",     4, cmd_echo,    "Repeat user input"},
-    {"date",     4, cmd_date,    "Show date and time"},
-    {"mem",      3, cmd_mem,     "Show available RAM"},
-    {"hexdump",  7, cmd_hexdump, "Dump system memory"},
-    {"cpuinfo",  7, cmd_cpuinfo, "CPU vendor and features"},
-    {"exec",     4, cmd_exec,    "Run a program from disk by name"},
+    {"help",     4, cmd_help,    "List all commands", ""},
+    {"clear",    5, cmd_clear,   "Clear the screen", ""},
+    {"echo",     4, cmd_echo,    "Repeat user input", "[-n] <text>"},
+    {"date",     4, cmd_date,    "Show date and time", ""},
+    {"mem",      3, cmd_mem,     "Show available RAM", ""},
+    {"hexdump",  7, cmd_hexdump, "Dump system memory", "[-n <count>]"},
+    {"cpuinfo",  7, cmd_cpuinfo, "CPU vendor and features", ""},
+    {"exec",     4, cmd_exec,    "Run a program from disk by name", "<file> [args...]"},
 
     // ---- Files ----
-    {"ls",       2, cmd_ls,      "List files on disk"},
-    {"df",       2, cmd_df,      "Show free disk space"},
-    {"cat",      3, cmd_cat,     "View a text file"},
-    {"rm",       2, cmd_rm,      "Remove a file"},
-    {"mv",       2, cmd_mv,      "Rename a file"},
-    {"cp",       2, cmd_cp,      "Copy a file"},
+    {"ls",       2, cmd_ls,      "List files in current dir", "[-a]"},
+    {"df",       2, cmd_df,      "Show free disk space", "[-h]"},
+    {"cat",      3, cmd_cat,     "View a text file", "[-n] <file>"},
+    {"cd",       2, cmd_cd,      "Change directory", "[path | -]"},
+    {"pwd",      3, cmd_pwd,     "Show current directory", ""},
+    {"mkdir",    5, cmd_mkdir,   "Create a directory", "[-p] <path>"},
+    {"rmdir",    5, cmd_rmdir,   "Remove a directory", "[-r] [-f] <path>"},
+    {"cp",       2, cmd_cp,      "Copy a file", "[-r] [-f] <src> <dest>"},
+    {"mv",       2, cmd_mv,      "Rename/Move a file", "[-f] <src> <dest>"},
+    {"rm",       2, cmd_rm,      "Remove a file", "[-r] [-f] <path>"},
 
     // ---- Apps ----
-    {"palette",  7, cmd_palette, "Show color palette"},
-    {"theme",    5, cmd_theme,   "Change color scheme"},
-    {"brainfuck", 9, cmd_brainfuck, "Run Brainfuck code"},
-    {"edit",     4, cmd_edit,    "Text editor"},
-    {"basic",    5, cmd_basic,   "BASIC interpreter"},
-    {"snake",    5, cmd_snake,   "Play Snake"},
+    {"palette",  7, cmd_palette, "Show color palette", ""},
+    {"theme",    5, cmd_theme,   "Change color scheme", "[-l] [0-4]"},
+    {"brainfuck", 9, cmd_brainfuck, "Run Brainfuck code", "<file>"},
+    {"edit",     4, cmd_edit,    "Text editor", "[file]"},
+    {"basic",    5, cmd_basic,   "BASIC interpreter", "[file]"},
+    {"snake",    5, cmd_snake,   "Play Snake", ""},
 
     // ---- System ----
-    {"reboot",   6, cmd_reboot,  "Reboot the system"},
-    {"poweroff", 8, cmd_poweroff,"Shut down the system (Requires APM)"},
+    {"reboot",   6, cmd_reboot,  "Reboot the system", ""},
+    {"poweroff", 8, cmd_poweroff,"Shut down the system (Requires APM)", ""},
 };
 
 #define CMD_COUNT (sizeof(cmd_table) / sizeof(struct cli_command))
 
-static const uint8_t help_sections[] = {9, 15, 21};
+static const uint8_t help_sections[] = {8, 18, 24};
 
 static void more_prompt(int* count) {
     (*count)++;
@@ -518,11 +508,25 @@ void cmd_help(const char* args) {
     }
 }
 
-// =====================================================================
 //  SHELL COMMAND-LINE REDRAW
-// =====================================================================
 #define HIST_SIZE 5
 #define CMD_MAX 63
+
+// Prompt: "OS>" in the root directory, "OS:\DIR\SUB>" inside directories.
+static uint8_t prom_len(void) {
+    if (fs_get_cwd() == 0) return 3;   // "OS>"
+    const char* p = fs_get_cwd_path();
+    uint8_t n = 3;                 // "OS:"
+    while (*p) { n++; p++; }
+    return n + 1;                  // + ">"
+}
+
+static void prom_print(void) {
+    if (fs_get_cwd() == 0) { print_str("OS>"); return; }
+    print_str("OS:");
+    print_str(fs_get_cwd_path());
+    print_char('>');
+}
 
 static void flash_red(void) {
     error_chime();
@@ -569,12 +573,12 @@ static void flash_red(void) {
     );
 }
 
-static void redraw_cmdline(uint8_t srow, const char* buf, int len, int pos) {
-    gotoxy(0, srow);
-    print_str("OS:>");
+static void redraw_cmdline(uint8_t col, uint8_t srow, const char* buf, int len, int pos) {
+    gotoxy(col, srow);
+    prom_print();
     for (int i = 0; i < len; i++) print_char(buf[i]);
 
-    int remain = 80 - (4 + len);
+    int remain = 80 - (col + prom_len() + len);
     if (remain > 0) {
         uint8_t attr = cur_col;
         __asm__ __volatile__ (
@@ -587,7 +591,7 @@ static void redraw_cmdline(uint8_t srow, const char* buf, int len, int pos) {
         );
     }
 
-    gotoxy(4 + pos, srow);
+    gotoxy(col + prom_len() + pos, srow);
 }
 
 static void buf_insert(char* buf, int* len, int* pos, char c) {
@@ -611,14 +615,33 @@ static void buf_delete_at(char* buf, int* len, int* pos) {
     (*len)--;
 }
 
-// =====================================================================
 //  FILESYSTEM COMMANDS
-// =====================================================================
 void cmd_ls(const char* args) {
-    fs_list_dir();
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+    fs_list_dir((flags & SW_ALL) ? 1 : 0);
+}
+
+// Prints a KB value either plainly or human-readable (K / M with one decimal).
+static void print_size_h(uint16_t kb, uint8_t human) {
+    if (!human) { print_int(kb); return; }
+    if (kb >= 1024) {
+        uint16_t whole = kb / 1024;
+        uint16_t frac = (uint16_t)(((uint32_t)(kb % 1024) * 10) / 1024);
+        print_int(whole);
+        print_char('.');
+        print_char('0' + frac);
+        print_char('M');
+    } else {
+        print_int(kb);
+        print_char('K');
+    }
 }
 
 void cmd_df(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
     if (!fs_initialized) fs_init();
 
     uint16_t free_clusters = 0;
@@ -630,23 +653,28 @@ void cmd_df(const char* args) {
     uint16_t free_kb = ((uint32_t)free_clusters * cluster_bytes) / 1024;
     uint16_t used_kb = total_kb - free_kb;
     uint16_t used_percent = total_kb ? ((uint32_t)used_kb * 100) / total_kb : 0;
+    uint8_t human = (flags & SW_HUMAN) ? 1 : 0;
 
-    print_str("Filesystem  Size(KB)  Used(KB)  Avail(KB)  Use%\r\n");
+    print_str(human ? "Filesystem  Size     Used     Avail     Use%\r\n"
+                    : "Filesystem  Size(KB)  Used(KB)  Avail(KB)  Use%\r\n");
     print_str("FAT12       ");
-    print_int(total_kb);
+    print_size_h(total_kb, human);
     print_str("        ");
-    print_int(used_kb);
+    print_size_h(used_kb, human);
     print_str("        ");
-    print_int(free_kb);
+    print_size_h(free_kb, human);
     print_str("         ");
     print_int(used_percent);
     print_str("%\r\n");
 }
 
 void cmd_cat(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
     if (!args || args[0] == '\0') {
         error_chime();
-        print_str("ERR: Usage: cat <filename>\r\n");
+        print_str("ERR: Usage: cat [-n] <filename>\r\n");
         return;
     }
 
@@ -659,80 +687,187 @@ void cmd_cat(const char* args) {
         return;
     }
 
-    print_str(buf);
+    if (flags & SW_N) {
+        int ln = 1;
+        print_int((uint16_t)ln);
+        print_str("  ");
+        for (int i = 0; buf[i]; i++) {
+            if (buf[i] == '\n') {
+                print_str("\r\n");
+                if (buf[i + 1]) { ln++; print_int((uint16_t)ln); print_str("  "); }
+            } else {
+                print_char(buf[i]);
+            }
+        }
+        print_str("\r\n");
+    } else {
+        print_str(buf);
+        print_str("\r\n");
+    }
+}
+
+//  COMMAND SWITCHES
+// Peels leading "-x" switches (e.g. "-rf", "-r -f") off args, ORs the
+// matching SW_* bits into *flags, and returns the first non-switch argument.
+// Unknown switch letters are ignored.
+const char* parse_switches(const char* args, uint8_t* flags) {
+    *flags = 0;
+    while (args && *args == '-') {
+        const char* p = args + 1;
+        while (*p && *p != ' ') {
+            switch (*p) {
+                case 'r': case 'R': *flags |= SW_RECURSIVE; break;
+                case 'f': case 'F': *flags |= SW_FORCE;     break;
+                case 'p': case 'P': *flags |= SW_PARENTS;   break;
+                case 'a': case 'A': *flags |= SW_ALL;       break;
+                case 'n': case 'N': *flags |= SW_N;         break;
+                case 'h': case 'H': *flags |= SW_HUMAN;     break;
+                case 'l': case 'L': *flags |= SW_LIST;      break;
+                default: break;
+            }
+            p++;
+        }
+        args = p;
+        while (*args == ' ') args++;
+    }
+    return args;
+}
+
+// A leading "-h" / "--help" / "-?" asks for the command's usage line.
+// Exception: "df" uses "-h" for human-readable sizes, so it only honours
+// "--help" (and "-?").
+static int wants_help(const struct cli_command* c, const char* a) {
+    if (!a || a[0] != '-') return 0;
+    if (a[1] == '-')
+        return strncmp(a, "--help", 6) == 0 && (a[6] == '\0' || a[6] == ' ');
+    for (const char* p = a + 1; *p && *p != ' '; p++) {
+        if (*p == '?') return 1;
+        if ((*p == 'h' || *p == 'H') && strcmp(c->name, "df") != 0) return 1;
+    }
+    return 0;
+}
+
+static void show_usage(const struct cli_command* c) {
+    print_str("Usage: ");
+    print_str(c->name);
+    if (c->usage && c->usage[0]) { print_char(' '); print_str(c->usage); }
+    print_str("\r\n  ");
+    print_str(c->description);
     print_str("\r\n");
 }
 
-void cmd_rm(const char* args) {
-    if (!args || args[0] == '\0') {
-        error_chime();
-        print_str("ERR: Usage: rm <filename>\r\n");
+// Shared delete body for rm / rmdir -r.
+static void remove_path(const char* path, uint8_t flags) {
+    if (flags & SW_RECURSIVE) {
+        uint8_t r = fs_rm_recursive(path);
+        if (r == 1) {
+            if (!(flags & SW_FORCE)) { error_chime(); print_str("ERR: Not found\r\n"); }
+        } else if (r == 4) {
+            error_chime();
+            print_str("ERR: Cannot remove current directory\r\n");
+        } else if (r == 2) {
+            critical_chime();
+            print_str("ERR: Could not remove directory\r\n");
+        } else {
+            print_str("Deleted.\r\n");
+        }
         return;
     }
 
-    if (fs_delete_file(args)) {
+    uint8_t r = fs_delete_file(path);
+    if (r == 1) {
+        if (!(flags & SW_FORCE)) { error_chime(); print_str("ERR: File not found\r\n"); }
+    } else if (r == 2) {
         error_chime();
-        print_str("ERR: File not found\r\n");
+        print_str("ERR: Is a directory - use rm -r\r\n");
+    } else {
+        print_str("Deleted.\r\n");
+    }
+}
+
+void cmd_rm(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
+    if (!args || args[0] == '\0') {
+        error_chime();
+        print_str("ERR: Usage: rm [-r] [-f] <path>\r\n");
         return;
     }
-    print_str("Deleted.\r\n");
+
+    remove_path(args, flags);
 }
 
 void cmd_mv(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
     if (!args || args[0] == '\0') {
         error_chime();
-        print_str("ERR: Usage: mv <source> <dest>\r\n");
+        print_str("ERR: Usage: mv [-f] <source> <dest>\r\n");
         return;
     }
 
-    char src[13], dst[13];
+    char src[65], dst[65];
     int i = 0;
-    while (args[i] && args[i] != ' ' && i < 12) { src[i] = args[i]; i++; }
+    while (args[i] && args[i] != ' ' && i < 64) { src[i] = args[i]; i++; }
     src[i] = '\0';
 
     if (args[i] != ' ') {
         error_chime();
-        print_str("ERR: Usage: mv <source> <dest>\r\n");
+        print_str("ERR: Usage: mv [-f] <source> <dest>\r\n");
         return;
     }
     while (args[i] == ' ') i++;
 
     int j = 0;
-    while (args[i] && args[i] != ' ' && j < 12) { dst[j] = args[i]; i++; j++; }
+    while (args[i] && args[i] != ' ' && j < 64) { dst[j] = args[i]; i++; j++; }
     dst[j] = '\0';
 
-    if (fs_rename(src, dst)) {
+    if (flags & SW_FORCE) fs_rm_recursive(dst);   // -f: overwrite an existing destination
+
+    uint8_t r = fs_rename(src, dst);
+    if (r == 1) {
         error_chime();
         print_str("ERR: '");
         print_str(src);
-        print_str("' not found\r\n");
+        print_str("' not found, or target already exists\r\n");
+    } else if (r == 2) {
+        critical_chime();
+        print_str("ERR: Destination directory is full\r\n");
     } else {
         print_str("Renamed.\r\n");
     }
 }
 
 void cmd_cp(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
     if (!args || args[0] == '\0') {
         error_chime();
-        print_str("ERR: Usage: cp <source> <dest>\r\n");
+        print_str("ERR: Usage: cp [-r] [-f] <source> <dest>\r\n");
         return;
     }
 
-    char src[13], dst[13];
+    char src[65], dst[65];
     int i = 0;
-    while (args[i] && args[i] != ' ' && i < 12) { src[i] = args[i]; i++; }
+    while (args[i] && args[i] != ' ' && i < 64) { src[i] = args[i]; i++; }
     src[i] = '\0';
 
     if (args[i] != ' ') {
         error_chime();
-        print_str("ERR: Usage: cp <source> <dest>\r\n");
+        print_str("ERR: Usage: cp [-r] [-f] <source> <dest>\r\n");
         return;
     }
     while (args[i] == ' ') i++;
 
     int j = 0;
-    while (args[i] && args[i] != ' ' && j < 12) { dst[j] = args[i]; i++; j++; }
+    while (args[i] && args[i] != ' ' && j < 64) { dst[j] = args[i]; i++; j++; }
     dst[j] = '\0';
+
+    // Directories are always copied recursively; -r is accepted for clarity.
+    if (flags & SW_FORCE) fs_rm_recursive(dst);   // -f: overwrite an existing destination
 
     uint8_t r = fs_copy(src, dst, mod_buf, sizeof(mod_buf));
     if (r == 1) {
@@ -742,9 +877,107 @@ void cmd_cp(const char* args) {
         print_str("' not found\r\n");
     } else if (r == 2) {
         critical_chime();
-        print_str("ERR: File too large to copy\r\n");
+        print_str("ERR: Copy failed (too large, or destination full/exists)\r\n");
     } else {
         print_str("Copied.\r\n");
+    }
+}
+
+void cmd_pwd(const char* args) {
+    if (fs_get_cwd() == 0) {
+        print_str("OS:\\\r\n");
+        return;
+    }
+    print_str("OS:");
+    print_str(fs_get_cwd_path());
+    print_str("\r\n");
+}
+
+// Tracks the previous directory for "cd -".
+static char cd_prev[80];
+static int cd_have_prev = 0;
+
+void cmd_cd(const char* args) {
+    const char* target = args;
+    int want_print = 0;
+
+    if (!args || args[0] == '\0') {
+        target = "\\";
+    } else if (args[0] == '-' && args[1] == '\0') {
+        if (!cd_have_prev) {
+            error_chime();
+            print_str("ERR: No previous directory\r\n");
+            return;
+        }
+        target = cd_prev;          // may be "" (root)
+        want_print = 1;
+    }
+
+    char here[80];
+    const char* cur = fs_get_cwd_path();
+    int n = 0;
+    while (cur[n] && n < 79) { here[n] = cur[n]; n++; }
+    here[n] = '\0';
+
+    if (fs_cd(target)) {
+        error_chime();
+        print_str("ERR: No such directory\r\n");
+        return;
+    }
+
+    for (int k = 0; k <= n; k++) cd_prev[k] = here[k];
+    cd_have_prev = 1;
+
+    if (want_print) {
+        print_str("OS:");
+        print_str(fs_get_cwd_path());
+        print_str("\r\n");
+    }
+}
+
+void cmd_mkdir(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
+    if (!args || args[0] == '\0') {
+        error_chime();
+        print_str("ERR: Usage: mkdir [-p] <path>\r\n");
+        return;
+    }
+    uint8_t r = (flags & SW_PARENTS) ? fs_mkdir_p(args) : fs_mkdir(args);
+    if (r == 1) {
+        error_chime();
+        print_str("ERR: Cannot create (invalid or already exists)\r\n");
+    } else if (r == 2) {
+        critical_chime();
+        print_str("ERR: Disk or directory full\r\n");
+    }
+}
+
+void cmd_rmdir(const char* args) {
+    uint8_t flags;
+    args = parse_switches(args, &flags);
+
+    if (!args || args[0] == '\0') {
+        error_chime();
+        print_str("ERR: Usage: rmdir [-r] <path>\r\n");
+        return;
+    }
+    if (flags & SW_RECURSIVE) { remove_path(args, flags); return; }
+
+    uint8_t r = fs_rmdir(args);
+    if (r == 1) {
+        error_chime();
+        print_str("ERR: Directory not found\r\n");
+    } else if (r == 2) {
+        error_chime();
+        print_str("ERR: Not a directory\r\n");
+    } else if (r == 3) {
+        error_chime();
+        print_str("ERR: Directory not empty\r\n");
+    } else if (r == 4) {
+        error_chime();
+        print_str("ERR: Cannot remove current directory\r\n");
     }
 }
 
@@ -778,10 +1011,11 @@ void iridium_main() {
         cmd_idx = 0;
         cur_pos = 0;
 
-        print_str("OS:>");
-
+        // Remember where the prompt begins so a command whose output does not
+        // end in a newline (e.g. "echo -n") is not overwritten on redraw.
         uint8_t shell_row, shell_col;
         get_cursor_rc(&shell_row, &shell_col);
+        prom_print();
 
         while (1) {
             uint16_t key = get_key();
@@ -796,7 +1030,7 @@ void iridium_main() {
             else if (ascii == 8) {
                 if (cur_pos > 0) {
                     buf_delete(cmd_buf, &cmd_idx, &cur_pos);
-                    redraw_cmdline(shell_row, cmd_buf, cmd_idx, cur_pos);
+                    redraw_cmdline(shell_col, shell_row, cmd_buf, cmd_idx, cur_pos);
                 }
             }
             else if (ascii == 0) {
@@ -823,7 +1057,7 @@ void iridium_main() {
                     cmd_idx = i;
                     cur_pos = cmd_idx;
                     cmd_buf[cmd_idx] = '\0';
-                    redraw_cmdline(shell_row, cmd_buf, cmd_idx, cur_pos);
+                    redraw_cmdline(shell_col, shell_row, cmd_buf, cmd_idx, cur_pos);
                 }
                 else if (scan == 0x50) {
                     if (hist_cur == -1) continue;
@@ -837,7 +1071,7 @@ void iridium_main() {
                         cmd_idx = i;
                         cur_pos = cmd_idx;
                         cmd_buf[cmd_idx] = '\0';
-                        redraw_cmdline(shell_row, cmd_buf, cmd_idx, cur_pos);
+                        redraw_cmdline(shell_col, shell_row, cmd_buf, cmd_idx, cur_pos);
                     } else {
                         hist_cur--;
                         int idx = (hist_next - 1 - hist_cur + HIST_SIZE) % HIST_SIZE;
@@ -849,40 +1083,40 @@ void iridium_main() {
                         cmd_idx = i;
                         cur_pos = cmd_idx;
                         cmd_buf[cmd_idx] = '\0';
-                        redraw_cmdline(shell_row, cmd_buf, cmd_idx, cur_pos);
+                        redraw_cmdline(shell_col, shell_row, cmd_buf, cmd_idx, cur_pos);
                     }
                 }
                 else if (scan == 0x4B) {
                     if (cur_pos > 0) {
                         cur_pos--;
-                        gotoxy(4 + cur_pos, shell_row);
+                        gotoxy(shell_col + prom_len() + cur_pos, shell_row);
                     }
                 }
                 else if (scan == 0x4D) {
                     if (cur_pos < cmd_idx) {
                         cur_pos++;
-                        gotoxy(4 + cur_pos, shell_row);
+                        gotoxy(shell_col + prom_len() + cur_pos, shell_row);
                     }
                 }
                 else if (scan == 0x47) {
                     cur_pos = 0;
-                    gotoxy(4, shell_row);
+                    gotoxy(shell_col + prom_len(), shell_row);
                 }
                 else if (scan == 0x4F) {
                     cur_pos = cmd_idx;
-                    gotoxy(4 + cur_pos, shell_row);
+                    gotoxy(shell_col + prom_len() + cur_pos, shell_row);
                 }
                 else if (scan == 0x53) {
                     if (cur_pos < cmd_idx) {
                         buf_delete_at(cmd_buf, &cmd_idx, &cur_pos);
-                        redraw_cmdline(shell_row, cmd_buf, cmd_idx, cur_pos);
+                        redraw_cmdline(shell_col, shell_row, cmd_buf, cmd_idx, cur_pos);
                     }
                 }
             }
             else if (ascii >= 32 && ascii <= 126) {
                 if (cmd_idx < CMD_MAX) {
                     buf_insert(cmd_buf, &cmd_idx, &cur_pos, (char)ascii);
-                    redraw_cmdline(shell_row, cmd_buf, cmd_idx, cur_pos);
+                    redraw_cmdline(shell_col, shell_row, cmd_buf, cmd_idx, cur_pos);
                 } else {
                     flash_red();
                 }
@@ -915,16 +1149,21 @@ void iridium_main() {
                 break;
             }
             else if (strncmp(cmd_buf, cmd_table[i].name, name_len) == 0 && cmd_buf[name_len] == ' ') {
-                cmd_table[i].function(cmd_buf + name_len + 1);
+                const char* a = cmd_buf + name_len + 1;
+                if (wants_help(&cmd_table[i], a)) {
+                    show_usage(&cmd_table[i]);
+                } else {
+                    cmd_table[i].function(a);
+                }
                 command_executed = 1;
                 break;
             }
         }
 
         if (!command_executed) {
-            char modname[13];
+            char modname[64];
             int i = 0;
-            while (cmd_buf[i] && cmd_buf[i] != ' ' && i < 12) {
+            while (cmd_buf[i] && cmd_buf[i] != ' ' && i < 63) {
                 modname[i] = cmd_buf[i];
                 i++;
             }

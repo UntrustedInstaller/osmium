@@ -27,8 +27,16 @@ That's it. The script:
 3. Compiles `src/main.c`, `src/fs.c`, and everything in `src/app/` (except loadable modules)
 4. Links to ELF, then strips BSS into a flat binary
 5. Concatenates boot sector + kernel → `build/os.img`
-6. Uses `mformat` to write a real FAT12 filesystem on top
-7. Builds loadable modules (snake) and seeds config/boot files
+6. Uses `mformat` to write a real FAT12 filesystem on top (79 reserved sectors)
+7. Builds the loadable modules (snake, brainfuck, editor, BASIC) and seeds config/boot files
+
+### Disk layout
+
+The first 79 sectors are reserved: one boot sector plus the 78 sectors the boot
+loader reads for the kernel. The FAT starts at sector 79, so the kernel binary
+must stay at or below **78 sectors (39,936 bytes)** or the filesystem will
+overwrite its tail. `build.sh` prints the free space implicitly — check
+`stat -c%s build/kernel.bin` if you add a lot of code.
 
 ## Run
 

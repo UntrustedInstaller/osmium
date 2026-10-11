@@ -10,7 +10,7 @@ nop
 db "OSMIUM  "
 dw 512
 db 1
-dw 72
+dw 79
 db 2
 dw 224
 dw 2880
@@ -114,14 +114,25 @@ boot_start:
     pop di
     jmp 0x1000:0x0000
 
+; ---------------------------------------------------------------------
+;  Fatal error: tell the user what went wrong, then stop.
+; ---------------------------------------------------------------------
 dsk_err:
+    mov si, err_msg
     mov ah, 0x0e
-    mov al, 'GENERAL DISK READ FAIL!'
+.print_loop:
+    lodsb
+    test al, al
+    jz .halt
     int 0x10
+    jmp .print_loop
+
 .halt:
     cli
     hlt
     jmp .halt
+
+err_msg db "DISK READ FAILED!", 0
 
 times 510-($-$$) db 0
 dw 0xaa55

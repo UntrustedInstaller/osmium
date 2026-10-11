@@ -94,6 +94,11 @@ The kernel installs a handler at IVT slot `0x60` (offset `0x0180`). Set `CX` = f
 | 9 | `fs_read_file` | `ES:BX` = filename, `AX` = buffer offset, `DX` = max bytes | `AL` = 0 ok, 1 err | Filename in module segment, buffer in module segment |
 | 10 | `fs_write_file` | `ES:BX` = filename, `AX` = data offset, `DX` = size | `AL` = 0 ok, 1 err | Filename in module segment, data in module segment |
 
+Filenames are resolved against the shell's current directory, so a module
+launched from `OS:\GAMES>` opens `LEVEL.DAT` in `\GAMES`. Prefix the name with
+`\` (e.g. `\DATA.TXT`) to always use the root, and either `/` or `\` works as a
+path separator.
+
 ### System Info
 
 | CX | Function | Call | Returns | Notes |
@@ -209,24 +214,37 @@ If the user ran `basic program.bas`, `args` points to `"program.bas"`.
 
 ## 6. Build Integration
 
-Add your module to `build.sh` by following the existing pattern:
+`build.sh` auto-discovers `src/app/*.c` and links them into the kernel, except
+for the names listed in `LOADABLE_MODULES`. To ship a new loadable module:
 
-```sh
-# Near the bottom, in the "Building loadable modules" section:
-echo "    -> Building module: mymod"
-gcc $CFLAGS -c src/app/mymod.c -o $BLD/mymod.o
-nasm -f elf32 src/module_entry.asm -o $BLD/mod_entry.o
-ld $LDFLAGS $BLD/mod_entry.o $BLD/mymod.o -o $BLD/mymod.bin
-echo "    -> mymod.mod built ($(stat -c%s $BLD/mymod.bin) bytes)"
-echo $BLD/mymod.bin >> $BLD/modules.lst
-```
+1. Add its name to the `LOADABLE_MODULES` list near the top of the "Compiling
+   application modules" section, so it is *not* linked into the kernel.
+2. Add a `build_module "<name>"` call next to the existing ones. The helper
+   builds `src/app/<name>.c` into `build/<name>.mod`:
 
-The `$CFLAGS` and `$LDFLAGS` used by the other modules:
+   ```sh
+   build_module() {
+       local name="$1"
+       gcc -m16 -march=i386 -ffreestanding -fno-pic -fno-PIE \
+           -fno-stack-protector -nostdlib -Isrc/app \
+           -c "src/app/${name}.c" -o "build/mod_${name}.o"
+       nasm -f elf32 src/module_entry.asm -o "build/mod_entry_${name}.o"
+       ld -m elf_i386 -T src/module.ld \
+           "build/mod_entry_${name}.o" "build/mod_${name}.o" \
+           -o "build/${name}.mod"
+   }
+   build_module "mymod"
+   ```
 
-```sh
-CFLAGS="-m16 -march=i386 -ffreestanding -nostdlib -Isrc/app -Isrc/kernel -O2 -g"
-LDFLAGS="-m elf_i386 -T src/module.ld"
-```
+3. Seed the flat binary onto the image (8.3 name, uppercased). The shell looks
+   up the module by the command name the user types:
+
+   ```sh
+   mcopy -i build/os.img build/mymod.mod ::MYMOD.BIN
+   ```
+
+There is no `CFLAGS`/`modules.lst` indirection — the flags in `build_module`
+are literal and match the kernel's compiler flags.
 
 ---
 
@@ -245,11 +263,10 @@ LDFLAGS="-m elf_i386 -T src/module.ld"
 
 | Module | Source | Size | Features |
 |--------|--------|------|----------|
-| `ABOUT.BIN` | `about.c` | 3.5 KB | System info, boot animation, memory display |
-| `BASIC.BIN` | `basic.c` | 9.5 KB | Tiny BASIC interpreter (Palo Alto variant), SAVE/LOAD |
-| `BRAINFUC.BIN` | `bf.c` | 1.5 KB | Brainfuck interpreter, disk-based programs |
-| `EDIT.BIN` | `editor.c` | 3.9 KB | Full-screen text editor, file persistence |
-| `SNAKE.BIN` | `snake.c` | 2.2 KB | Snake game |
+| `BASIC.BIN` | `basic.c` | ~10.4 KB | Tiny BASIC interpreter (Palo Alto variant), SAVE/LOAD |
+| `BRAINFUC.BIN` | `bf.c` | ~1.6 KB | Brainfuck interpreter, disk-based programs |
+| `EDIT.BIN` | `editor.c` | ~4.0 KB | Full-screen text editor, file persistence |
+| `SNAKE.BIN` | `snake.c` | ~2.6 KB | Snake game |
 
 Read these for idiomatic examples of:
 - File I/O via the FS API (`fs_read_file` / `fs_write_file`)
