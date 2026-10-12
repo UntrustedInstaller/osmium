@@ -523,7 +523,7 @@ static uint8_t prom_len(void) {
 }
 
 static void prom_print(void) {
-    if (fs_get_cwd() == 0) { print_str("OS:\>"); return; }
+    if (fs_get_cwd() == 0) { print_str("OS>"); return; }
     print_str("OS:");
     print_str(fs_get_cwd_path());
     print_char('>');
