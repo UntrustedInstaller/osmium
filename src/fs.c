@@ -524,7 +524,24 @@ static void list_print_entry(const uint8_t* e, uint32_t* files, uint32_t* dirs) 
     for (int i = 0; i < d; i++) print_char(disp[i]);
     for (int s = d; s < 14; s++) print_char(' ');
 
-    print_str(e[11] & 0x10 ? "DIR     " : "FILE    ");
+    if (e[11] & 0x10) {
+        print_str("DIR     ");
+    } else {
+        // Check if this is an executable/program (BIN extension)
+        int is_bin = 0;
+        if (e[8] == 'B' || e[8] == 'b') {
+            if (e[9] == 'I' || e[9] == 'i') {
+                if (e[10] == 'N' || e[10] == 'n') {
+                    is_bin = 1;
+                }
+            }
+        }
+        if (is_bin) {
+            print_str("BIN     ");
+        } else {
+            print_str("FILE    ");
+        }
+    }
 
     uint32_t size = e[28] | (e[29] << 8) | (e[30] << 16) | (e[31] << 24);
     uint16_t cluster = e[26] | (e[27] << 8);
