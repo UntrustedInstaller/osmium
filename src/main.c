@@ -417,7 +417,7 @@ void hexdump(const void* addr, int count) {
 }
 
 //  THEME PERSISTENCE
-static const uint8_t theme_colors[] = {0x1F, 0x02, 0x06, 0x04, 0x0F};
+static const uint8_t theme_colors[] = {0x1F, 0x02, 0x06, 0x04, 0x07};
 
 void load_theme(void) {
     cur_col = 0x1F;
