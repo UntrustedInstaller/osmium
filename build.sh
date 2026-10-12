@@ -127,32 +127,17 @@ fi
 
 echo "----------------------------------------------"
 
-# 8. Floppy Disk Burner
+# 8. Floppy Disk Burner (data-conscious: defaults to updating in place)
 read -p "Write to floppy? (y/N): " write_floppy
 if [[ "$write_floppy" =~ ^[Yy]$ ]]; then
     echo ""
-    echo "Current connected block devices:"
-    lsblk -d -o NAME,SIZE,TYPE,MODEL
-    echo ""
-    
-    read -p "Enter the target drive path carefully (e.g., /dev/sdX or /dev/fd0): " floppy_dev
-    
-    if [ -b "$floppy_dev" ]; then
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        echo "WARNING: Writing to $floppy_dev will completely destroy"
-        echo "all underlying data on that target drive."
-        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-        read -p "Are you absolutely, 100% sure you want to proceed? (y/N): " confirm
-        
-        if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            echo "[*] Writing to disk..."
-            sudo dd if=build/os.img of="$floppy_dev" bs=512 status=progress
-            sync
-            echo "[+] Flash complete!"
-        else
-            echo "[-] Floppy write aborted safely..."
-        fi
+    echo "  [u] update the OS in place - boot+kernel only, your files are kept   (default)"
+    echo "  [f] full write             - whole disk rewritten, ALL FILES ERASED"
+    read -p "Mode [u/f]: " flash_mode
+    if [[ "$flash_mode" =~ ^[Ff]$ ]]; then
+        exec ./flash-update.sh --full
     else
-        echo "ERR: $floppy_dev is not a valid block device."
+        echo "[*] handing off to ./flash-update.sh (in-place, data-conscious)..."
+        exec ./flash-update.sh
     fi
 fi
