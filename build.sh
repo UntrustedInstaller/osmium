@@ -60,20 +60,28 @@ objcopy -O binary -j .text -j .rodata -j .data build/kernel.elf build/kernel.bin
 
 # 7. Combine and Pad into build/os.img
 echo "[*] Synthesizing final floppy disk image..."
+KERNEL_SIZE=$(stat -c%s build/kernel.bin)
+KERNEL_SECTORS=$(( (KERNEL_SIZE + 511) / 512 ))
+RESERVED_SECTORS=$(( KERNEL_SECTORS + 1 ))
+if (( RESERVED_SECTORS > 150 )); then
+    echo "    !! Kernel too big!"
+    exit 1
+fi
+python3 -c "
+import sys
+d=open('build/boot.bin','rb').read()
+d=bytearray(d)
+r=$RESERVED_SECTORS
+d[0x0E]=r&0xFF
+d[0x0F]=(r>>8)&0xFF
+open('build/boot.bin','wb').write(d)
+"
 cat build/boot.bin build/kernel.bin > build/os.img
-
-# Ensure it fits a standard 1.44MB floppy
 truncate -s 1474560 build/os.img
-
-# Create a real FAT12 filesystem on the floppy image using mtools.
-# -B uses our boot sector as template (keeps boot code),
-# mformat updates the BPB fields to match the geometry below.
 echo "[*] Creating FAT12 filesystem with mformat..."
-# Reserved sectors must cover everything the boot sector loads: the boot
-# sector (1) plus the 78 kernel sectors read by src/boot.asm, so the FAT
-# starts after the kernel image and never overwrites it.
-mformat -i build/os.img -B build/boot.bin -R 79 -h 2 -t 80 -s 18 -c 1 :: 2>/dev/null
-echo "[+] FAT12 filesystem created (79 reserved, 2 FATs, 224 root entries)."
+mformat -i build/os.img -B build/boot.bin -R $RESERVED_SECTORS -h 2 -t 80 -s 18 -c 1 :: 2>/dev/null
+echo "[+] FAT12 filesystem created (${RESERVED_SECTORS} reserved, 2 FATs, 224 root entries)."
+echo "    Kernel: ${KERNEL_SIZE} bytes (${KERNEL_SECTORS} sectors)"
 
 # 8. Build loadable modules
 echo "[*] Building loadable modules..."
