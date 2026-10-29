@@ -5,6 +5,7 @@ build/
 agents/
 session-*.md
 AGENTS.md
+.env
 
 # Non-source assets
 design-docs.md
