@@ -193,8 +193,12 @@ static void cmd_snake(const char* args)     { try_load_and_run("snake", args); }
 // using rep movsb: DS:SI → ES:DI (read) or swapped (write).
 
 uint8_t api_fs_read_file(const char* name, uint16_t dest_off, uint16_t max) {
+    // Never let the module ask for more than the staging buffer holds, or the
+    // rep movsb below would walk off mod_buf into neighbouring BSS.
+    uint16_t n = max < sizeof(mod_buf) ? max : sizeof(mod_buf);
+
     memset(mod_buf, 0, sizeof(mod_buf));
-    if (fs_read_file(name, mod_buf, max)) return 1;
+    if (fs_read_file(name, mod_buf, n)) return 1;
 
     __asm__ __volatile__ (
         "cld\n\t"
@@ -204,14 +208,17 @@ uint8_t api_fs_read_file(const char* name, uint16_t dest_off, uint16_t max) {
         "rep movsb\n\t"
         "popw %%es\n\t"
         :
-        : "S"((uint16_t)(uint32_t)mod_buf), "D"(dest_off), "c"(max)
+        : "S"((uint16_t)(uint32_t)mod_buf), "D"(dest_off), "c"(n)
         : "ax", "memory"
     );
     return 0;
 }
 
 uint8_t api_fs_write_file(const char* name, uint16_t src_off, uint16_t size) {
-    uint16_t copy_size = size < sizeof(mod_buf) ? size : sizeof(mod_buf);
+    // Refuse oversized writes outright; silently truncating the copy while
+    // passing the full size to fs_write_file reads past mod_buf.
+    if (size > sizeof(mod_buf)) return 1;
+    uint16_t copy_size = size;
 
     __asm__ __volatile__ (
         "cld\n\t"

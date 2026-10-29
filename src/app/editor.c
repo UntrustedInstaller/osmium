@@ -5,7 +5,8 @@ __asm__(".code16gcc\n");
 #define EDITOR_MAX_SIZE (EDITOR_SECTORS * 512)
 #define EDITOR_FILE "EDITOR.TXT"
 
-static char ed_buf[EDITOR_MAX_SIZE];
+// One spare byte so ed_save() can always append a NUL after a full buffer.
+static char ed_buf[EDITOR_MAX_SIZE + 1];
 static int ed_size;
 static int ed_cursor;
 static int ed_scroll;
