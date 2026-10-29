@@ -499,6 +499,25 @@ uint8_t fs_cd(const char* path) {
 //  DIRECTORY LISTING
 // =====================================================================
 
+// Prints an unsigned 32-bit decimal value. Deliberately avoids 32-bit
+// division so no libgcc helper (__udivsi3) is needed on this freestanding
+// 16-bit target: each digit is peeled off by subtracting powers of ten.
+static void print_u32(uint32_t val) {
+    static const uint32_t pow10[10] = {
+        1000000000u, 100000000u, 10000000u, 1000000u, 100000u,
+        10000u, 1000u, 100u, 10u, 1u
+    };
+    int started = 0;
+    for (int i = 0; i < 10; i++) {
+        char digit = '0';
+        while (val >= pow10[i]) { val -= pow10[i]; digit++; }
+        if (digit != '0' || started || i == 9) {
+            print_char(digit);
+            started = 1;
+        }
+    }
+}
+
 static void list_print_entry(const uint8_t* e, uint32_t* files, uint32_t* dirs) {
     // Build the display name; directories are wrapped in [brackets] so they
     // stand out from files.
@@ -547,7 +566,7 @@ static void list_print_entry(const uint8_t* e, uint32_t* files, uint32_t* dirs) 
     uint16_t cluster = e[26] | (e[27] << 8);
 
     print_char(' ');
-    print_int(size);
+    print_u32(size);
     print_str("      ");
     print_int(cluster);
     print_str("\r\n");
@@ -616,42 +635,61 @@ uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     if (resolve_to(fs_cwd, name, &parent, dos)) return 1;
     if (!dir_scan(parent, dos, &m, &cluster, &size, &attr, 0, 0)) return 1;
     if (attr & 0x10) return 1;                   // can't read a directory as a file
+    if (size == 0 || max == 0) return 0;         // nothing to read, nothing to touch
+    if (cluster < 2) return 1;                   // malformed entry: data but no chain
 
     uint32_t read = 0;
-    while (1) {
+    while (read < size && read < max) {
         uint16_t start = cluster;
-        uint16_t count = 1;
+        uint16_t run = 1;                        // contiguous clusters from `start`
         uint16_t walk = cluster;
 
         while (1) {
             uint16_t next = fs_next_cluster(walk);
-            if (next >= FAT_EOF) { walk = next; break; }
-            if (next != walk + 1) { walk = next; break; }
-            count++;
+            if (next >= FAT_EOF) break;
+            if (next != walk + 1) break;
+            run++;
             walk = next;
         }
 
+        // Never DMA more than the caller's buffer can hold: `fit` is the number
+        // of whole sectors still available from `max`, and `need` the number of
+        // sectors the file still occupies. A multi-sector transfer is only taken
+        // when it fits exactly; otherwise one sector is staged and clamped.
         uint32_t lba = fs_cluster_to_lba(start);
-        uint16_t limit_sects = ((uint32_t)(max - read) + 511) / 512;
-        uint16_t need_sects = ((size - read) + 511) / 512;
-        if (count > limit_sects) count = limit_sects;
-        if (count > need_sects) count = need_sects;
+        uint32_t room = (uint32_t)max - read;
+        uint32_t remaining = (uint32_t)size - read;
+        uint16_t fit = (uint16_t)(room / 512);
+        uint16_t need = (uint16_t)((remaining + 511) / 512);
+        uint16_t take = run;
+        if (take > need) take = need;
+        if (take > fit) take = fit;
 
-        if (count > 1) {
-            if (read_sectors(lba, count, (uint8_t*)buf + read)) return 1;
+        if (take > 1) {
+            if (read_sectors(lba, take, (uint8_t*)buf + read)) return 1;
+            read += (uint32_t)take * 512;
         } else {
+            // A partial final sector (or a buffer with less than a sector left)
+            // is staged through rd_sector and copied byte-exactly.
             if (read_sector(lba, rd_sector)) return 1;
-            uint16_t to_copy = 512;
-            if (read + to_copy > max) to_copy = max - read;
-            if (read + to_copy > size) to_copy = size - read;
-            memcpy((uint8_t*)buf + read, rd_sector, to_copy);
+            uint32_t to_copy = 512;
+            if (to_copy > room) to_copy = room;
+            if (to_copy > remaining) to_copy = remaining;
+            memcpy((uint8_t*)buf + read, rd_sector, (int)to_copy);
+            read += to_copy;
+            take = 1;
+            if (to_copy < 512) break;            // clamped at max or end of file
         }
 
-        read += count * 512;
-        if (read > size) { read = size; break; }
-        if (read >= max) break;
-        if (walk >= FAT_EOF) break;
-        cluster = walk;
+        // Advance by exactly the clusters consumed; a run can be longer than
+        // what we just read, so don't jump straight to its end.
+        if (take >= run) {
+            uint16_t next = fs_next_cluster(walk);
+            if (next >= FAT_EOF) break;
+            cluster = next;
+        } else {
+            cluster = start + take;
+        }
     }
 
     return 0;
@@ -695,22 +733,28 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
     if (found && (old_attr & 0x10)) return 2;   // target is a directory
     int exists = found;
 
-    int needed = (size + 511) / 512;
-    if (needed == 0) needed = 1;
+    // A zero-length file gets no cluster chain at all (first cluster 0), which
+    // is what mtools/fsck expect. Otherwise round up to whole clusters.
+    uint16_t needed = (uint16_t)((size + 511) / 512);
 
     if (!exists) {
         if (dir_alloc_slot(parent, &m)) return 2;   // parent directory full
     }
 
-    if (exists && old_cluster >= 2) free_chain(old_cluster);
-
+    // Build the new chain BEFORE releasing the old one. If anything fails the
+    // directory entry still points at the old, untouched data, so an
+    // out-of-space or I/O error can never destroy the previous contents.
     uint16_t first_cluster = 0;
     uint16_t prev = 0;
     uint16_t alloc_start = 2;
 
-    for (int i = 0; i < needed; i++) {
+    for (uint16_t i = 0; i < needed; i++) {
         uint16_t free_c = find_free_cluster(alloc_start);
-        if (free_c == 0) return 2;
+        if (free_c == 0) {
+            if (first_cluster >= 2) free_chain(first_cluster);
+            flush_fat();
+            return 2;                           // out of space
+        }
 
         if (i == 0) first_cluster = free_c;
         if (prev != 0) set_fat_entry(prev, free_c);
@@ -726,12 +770,17 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
         if (to_copy > 512) to_copy = 512;
         memcpy(wr_sector, (const uint8_t*)data + off, to_copy);
 
-        if (write_sector(lba, wr_sector)) return 1;
+        if (write_sector(lba, wr_sector)) {
+            if (first_cluster >= 2) free_chain(first_cluster);
+            flush_fat();
+            return 1;
+        }
 
         alloc_start = free_c + 1;
         if (alloc_start > fs.total_clusters + 1) alloc_start = 2;
     }
 
+    // Persist the new chain before the entry that references it.
     flush_fat();
 
     uint8_t* de = dir_load(&m);
@@ -739,9 +788,9 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
     if (!exists) {
         memset(de, 0, 32);
         memcpy(de, dos, 11);
+        de[11] = 0x20;
     }
 
-    de[11] = 0x20;
     de[26] = first_cluster & 0xFF;
     de[27] = (first_cluster >> 8) & 0xFF;
     de[28] = size & 0xFF;
@@ -750,6 +799,13 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
     de[31] = (size >> 24) & 0xFF;
 
     dir_commit(&m);
+
+    // The entry now names the new chain, so the old one can be released.
+    if (exists && old_cluster >= 2) {
+        free_chain(old_cluster);
+        flush_fat();
+    }
+
     return 0;
 }
 
