@@ -51,8 +51,11 @@ uint16_t fs_next_cluster(uint16_t cluster);
 void fs_list_dir(uint8_t show_all);
 uint8_t fs_read_file(const char* name, void* buf, uint16_t max);
 uint8_t fs_write_file(const char* name, const void* data, uint32_t size);
+// fs_delete_file: 0 ok, 1 not found, 2 is a directory, 5 disk write failed
 uint8_t fs_delete_file(const char* name);
 uint8_t fs_copy(const char* src, const char* dst, void* buf, uint16_t buf_size);
+// fs_rename: 0 ok, 1 not found / target exists, 2 destination full,
+//            5 disk write failed
 uint8_t fs_rename(const char* old_name, const char* new_name);
 
 // ---- working directory & navigation ----
@@ -67,6 +70,8 @@ const char* fs_get_cwd_path(void);
 uint8_t fs_cd(const char* path);
 
 // ---- directory operations ----
+// Write failures are reported instead of being treated as success, so the
+// shell never claims a change stuck when the disk refused it.
 // fs_mkdir:  0 ok, 1 invalid / already exists, 2 parent directory full or disk full
 uint8_t fs_mkdir(const char* path);
 // fs_mkdir_p: like fs_mkdir, but creates any missing parent directories.

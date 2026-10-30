@@ -884,6 +884,9 @@ static void remove_path(const char* path, uint8_t flags) {
     } else if (r == 2) {
         error_chime();
         print_str("ERR: Is a directory - use rm -r\r\n");
+    } else if (r == 5) {
+        critical_chime();
+        print_str("ERR: Disk write failed\r\n");
     } else {
         print_str("Deleted.\r\n");
     }
@@ -939,6 +942,9 @@ void cmd_mv(const char* args) {
     } else if (r == 2) {
         critical_chime();
         print_str("ERR: Destination directory is full\r\n");
+    } else if (r == 5) {
+        critical_chime();
+        print_str("ERR: Disk write failed\r\n");
     } else {
         print_str("Renamed.\r\n");
     }
@@ -1055,6 +1061,9 @@ void cmd_mkdir(const char* args) {
     } else if (r == 2) {
         critical_chime();
         print_str("ERR: Disk or directory full\r\n");
+    } else if (r == 5) {
+        critical_chime();
+        print_str("ERR: Disk write failed\r\n");
     }
 }
 
@@ -1082,6 +1091,9 @@ void cmd_rmdir(const char* args) {
     } else if (r == 4) {
         error_chime();
         print_str("ERR: Cannot remove current directory\r\n");
+    } else if (r == 5) {
+        critical_chime();
+        print_str("ERR: Disk write failed\r\n");
     }
 }
 

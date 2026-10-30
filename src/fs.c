@@ -54,8 +54,8 @@ static uint8_t dir_sec[512];       // scratch buffer for one directory sector
 static char name_stack[24][12];    // scratch for rebuilding the cwd path string
 static uint8_t escratch[32];       // scratch for copying a directory entry
 
-static void flush_fat(void);
-static void flush_root(void);
+static uint8_t flush_fat(void);
+static uint8_t flush_root(void);
 
 // Validates a FAT12 BPB against the fixed cache sizes this kernel is built
 // with, then installs the geometry in `fs`. Nothing is written to fs until the
@@ -243,10 +243,11 @@ static uint8_t* dir_load(const fs_entry_t* e) {
     return dir_sec + e->off;
 }
 
-// Persists a modified entry back to disk.
-static void dir_commit(const fs_entry_t* e) {
-    if (e->dc == 0) { flush_root(); return; }
-    write_sector(fs_cluster_to_lba(e->cl), dir_sec);
+// Persists a modified entry back to disk. Returns 1 if the write failed, so
+// callers never report success for an entry that is still only in RAM.
+static uint8_t dir_commit(const fs_entry_t* e) {
+    if (e->dc == 0) return flush_root();
+    return write_sector(fs_cluster_to_lba(e->cl), dir_sec);
 }
 
 static int is_sep(char c) { return c == '\\' || c == '/'; }
@@ -468,10 +469,20 @@ static uint8_t dir_alloc_slot(uint16_t dc, fs_entry_t* out) {
     if (!cluster_in_range(c) || steps > fs.total_clusters) return 1;
     set_fat_entry(c, newc);
     set_fat_entry(newc, FAT_EOF);
-    flush_fat();
+    if (flush_fat()) {
+        // Put the in-memory FAT back the way the disk still has it.
+        set_fat_entry(c, FAT_EOF);
+        set_fat_entry(newc, FAT_FREE);
+        return 1;
+    }
 
     memset(wr_sector, 0, 512);
-    write_sector(fs_cluster_to_lba(newc), wr_sector);
+    if (write_sector(fs_cluster_to_lba(newc), wr_sector)) {
+        set_fat_entry(c, FAT_EOF);
+        set_fat_entry(newc, FAT_FREE);
+        (void)flush_fat();
+        return 1;
+    }
 
     out->dc = dc; out->cl = newc; out->off = 0;
     return 0;
@@ -826,16 +837,23 @@ uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     return 0;
 }
 
-static void flush_fat(void) {
+// Writes both FAT copies. Returns 0 only if every sector reached the disk; a
+// partial failure still writes as much as it can (a later flush retries), but
+// the caller must not claim the operation succeeded.
+static uint8_t flush_fat(void) {
+    uint8_t err = 0;
     for (uint16_t i = 0; i < fs.sectors_per_fat; i++) {
-        write_sector(fs.reserved_sectors + i, fs.sectors_per_fat_buf + i * 512);
-        write_sector(fs.reserved_sectors + fs.sectors_per_fat + i, fs.sectors_per_fat_buf + i * 512);
+        if (write_sector(fs.reserved_sectors + i, fs.sectors_per_fat_buf + i * 512)) err = 1;
+        if (write_sector(fs.reserved_sectors + fs.sectors_per_fat + i, fs.sectors_per_fat_buf + i * 512)) err = 1;
     }
+    return err;
 }
 
-static void flush_root(void) {
+static uint8_t flush_root(void) {
+    uint8_t err = 0;
     for (uint16_t i = 0; i < fs.root_dir_sectors; i++)
-        write_sector(fs.root_dir_lba + i, fs.root_dir_buf + i * 512);
+        if (write_sector(fs.root_dir_lba + i, fs.root_dir_buf + i * 512)) err = 1;
+    return err;
 }
 
 // Frees a cluster chain back to the free list. The step budget stops a
@@ -887,7 +905,7 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
         uint16_t free_c = find_free_cluster(alloc_start);
         if (free_c == 0) {
             if (first_cluster >= 2) free_chain(first_cluster);
-            flush_fat();
+            (void)flush_fat();                  // best-effort undo of the partial chain
             return 2;                           // out of space
         }
 
@@ -907,7 +925,7 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
 
         if (write_sector(lba, wr_sector)) {
             if (first_cluster >= 2) free_chain(first_cluster);
-            flush_fat();
+            (void)flush_fat();                  // best-effort undo of the partial chain
             return 1;
         }
 
@@ -916,7 +934,13 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
     }
 
     // Persist the new chain before the entry that references it.
-    flush_fat();
+    if (flush_fat()) {
+        // The chain never reached the disk. Release it from the cache too,
+        // so a later successful flush cannot memorialise an orphan.
+        if (first_cluster >= 2) free_chain(first_cluster);
+        (void)flush_fat();
+        return 1;
+    }
 
     uint8_t* de = dir_load(&m);
 
@@ -933,12 +957,15 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
     de[30] = (size >> 16) & 0xFF;
     de[31] = (size >> 24) & 0xFF;
 
-    dir_commit(&m);
+    // If this write fails the on-disk entry may or may not name the new
+    // chain, so the chain must NOT be freed: a leak is recoverable, pointing
+    // a live entry at reused clusters is not.
+    if (dir_commit(&m)) return 1;
 
     // The entry now names the new chain, so the old one can be released.
     if (exists && old_cluster >= 2) {
         free_chain(old_cluster);
-        flush_fat();
+        if (flush_fat()) return 1;   // file is safe; old space just leaks
     }
 
     return 0;
@@ -959,12 +986,19 @@ uint8_t fs_delete_file(const char* name) {
     if (!dir_scan(parent, dos, &m, &cluster, &size, &attr, 0, 0)) return 1;
     if (attr & 0x10) return 2;                  // is a directory
 
-    if (cluster >= 2) free_chain(cluster);
-    flush_fat();
-
+    // Remove the name first. If this write fails nothing has been freed yet,
+    // so the file is still intact and the caller can report a real error.
     uint8_t* de = dir_load(&m);
+    uint8_t old0 = de[0];
     de[0] = 0xE5;
-    dir_commit(&m);
+    if (dir_commit(&m)) {
+        de[0] = old0;                 // keep the cached entry truthful
+        return 5;                     // disk write failed
+    }
+
+    // The file is now unreachable; its clusters are safe to reuse.
+    if (cluster >= 2) free_chain(cluster);
+    if (flush_fat()) return 5;        // name gone, space left allocated (leak)
     return 0;
 }
 
@@ -989,7 +1023,10 @@ uint8_t fs_mkdir(const char* path) {
     uint16_t nc = find_free_cluster(2);
     if (nc == 0) return 2;
     set_fat_entry(nc, FAT_EOF);
-    flush_fat();
+    if (flush_fat()) {
+        set_fat_entry(nc, FAT_FREE);
+        return 5;                                               // disk write failed
+    }
 
     // Build the new directory's first sector: "." (self) and ".." (parent).
     memset(dir_sec, 0, 512);
@@ -1005,16 +1042,25 @@ uint8_t fs_mkdir(const char* path) {
     de[43] = 0x10;
     de[58] = parent & 0xFF;
     de[59] = (parent >> 8) & 0xFF;
-    write_sector(fs_cluster_to_lba(nc), dir_sec);
+    if (write_sector(fs_cluster_to_lba(nc), dir_sec)) {
+        set_fat_entry(nc, FAT_FREE);
+        (void)flush_fat();
+        return 5;                                               // disk write failed
+    }
 
     // Fill in the parent's entry for the new directory.
     uint8_t* pe = dir_load(&loc);
+    uint8_t oldent[32];
+    memcpy(oldent, pe, 32);
     memset(pe, 0, 32);
     memcpy(pe, dos, 11);
     pe[11] = 0x10;
     pe[26] = nc & 0xFF;
     pe[27] = (nc >> 8) & 0xFF;
-    dir_commit(&loc);
+    if (dir_commit(&loc)) {
+        memcpy(pe, oldent, 32);                                 // keep RAM == disk
+        return 5;                                               // disk write failed
+    }
     return 0;
 }
 
@@ -1039,7 +1085,7 @@ uint8_t fs_mkdir_p(const char* path) {
                 tmp[i] = '\0';
                 uint8_t r = fs_mkdir(tmp);       // 0 = created, 1 = already exists
                 tmp[i] = save;
-                if (r == 2) return 2;            // disk / parent full
+                if (r != 0 && r != 1) return r;  // full or write failure stops here
             }
         }
     }
@@ -1085,12 +1131,18 @@ uint8_t fs_rmdir(const char* path) {
         }
     }
 
-    free_chain(cc);
-    flush_fat();
-
+    // Same rule as fs_delete_file: drop the name before freeing anything, so
+    // a failed write cannot leave a live entry pointing at reused clusters.
     uint8_t* de = dir_load(&m);
+    uint8_t old0 = de[0];
     de[0] = 0xE5;
-    dir_commit(&m);
+    if (dir_commit(&m)) {
+        de[0] = old0;
+        return 5;                                               // disk write failed
+    }
+
+    free_chain(cc);
+    if (flush_fat()) return 5;                                  // space left allocated
     return 0;
 }
 
@@ -1122,7 +1174,7 @@ static uint8_t rm_tree_children(uint16_t dircluster, uint8_t depth) {
             // The recursive walk / free_chain clobbered dir_sec — reload.
             read_sector(fs_cluster_to_lba(c), dir_sec);
             dir_sec[j * 32] = 0xE5;
-            write_sector(fs_cluster_to_lba(c), dir_sec);
+            if (write_sector(fs_cluster_to_lba(c), dir_sec)) return 1;
         }
         c = fs_next_cluster(c);
     }
@@ -1151,7 +1203,20 @@ uint8_t fs_rm_recursive(const char* path) {
         uint16_t up = 0;
         for (uint16_t t = fs_cwd; t != 0 && ++up <= fs.total_clusters + 2; t = dir_parent(t))
             if (t == cc) return 4;
+    }
 
+    // Unlink the top-level name first. Everything below it is then
+    // unreachable, so freeing the tree can be interrupted without ever
+    // exposing live data to reuse.
+    uint8_t* de = dir_load(&m);
+    uint8_t old0 = de[0];
+    de[0] = 0xE5;
+    if (dir_commit(&m)) {
+        de[0] = old0;
+        return 2;                                               // disk write failed
+    }
+
+    if (ca & 0x10) {
         if (cluster_in_range(cc)) {
             if (rm_tree_children(cc, 0)) return 2;
             free_chain(cc);
@@ -1159,11 +1224,7 @@ uint8_t fs_rm_recursive(const char* path) {
     } else {
         if (cluster_in_range(cc)) free_chain(cc);
     }
-    flush_fat();
-
-    uint8_t* de = dir_load(&m);
-    de[0] = 0xE5;
-    dir_commit(&m);
+    if (flush_fat()) return 2;                                  // space left allocated
     return 0;
 }
 
@@ -1208,30 +1269,49 @@ uint8_t fs_rename(const char* old_name, const char* new_name) {
 
     if (parent2 == parent1) {
         uint8_t* de = dir_load(&m1);
+        memcpy((void*)escratch, de, 32);
         memcpy(de, dos2, 11);
-        dir_commit(&m1);
+        if (dir_commit(&m1)) {
+            memcpy(de, (const void*)escratch, 32);   // keep RAM == disk
+            return 5;
+        }
         return 0;
     }
 
     if (dir_alloc_slot(parent2, &m2)) return 2;   // destination directory full
 
-    // Snapshot the entry, then delete it from the source directory.
+    // Write the destination entry before removing the source name. If this
+    // fails the source is untouched, so a failed move cannot lose the file.
     uint8_t* de = dir_load(&m1);
     memcpy((void*)escratch, de, 32);
-    de[0] = 0xE5;
-    dir_commit(&m1);
 
+    uint8_t olddest[32];
     de = dir_load(&m2);
+    memcpy(olddest, de, 32);                     // free slot, for rollback
     memcpy(de, (const void*)escratch, 32);
     memcpy(de, dos2, 11);
-    dir_commit(&m2);
+    if (dir_commit(&m2)) {
+        memcpy(de, olddest, 32);
+        return 5;
+    }
+
+    // Now drop the source name. If that fails, undo the destination entry so
+    // two directories don't both claim the same chain.
+    de = dir_load(&m1);
+    de[0] = 0xE5;
+    if (dir_commit(&m1)) {
+        de = dir_load(&m2);
+        de[0] = 0xE5;
+        (void)dir_commit(&m2);
+        return 5;
+    }
 
     // Moving a directory: its ".." entry must now point at the new parent.
-    if (attr1 & 0x10) {
-        read_sector(fs_cluster_to_lba(cluster1), dir_sec);
+    if ((attr1 & 0x10) && cluster_in_range(cluster1)) {
+        if (read_sector(fs_cluster_to_lba(cluster1), dir_sec)) return 5;
         dir_sec[58] = parent2 & 0xFF;
         dir_sec[59] = (parent2 >> 8) & 0xFF;
-        write_sector(fs_cluster_to_lba(cluster1), dir_sec);
+        if (write_sector(fs_cluster_to_lba(cluster1), dir_sec)) return 5;
     }
     return 0;
 }
