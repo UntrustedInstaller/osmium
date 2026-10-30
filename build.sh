@@ -23,7 +23,10 @@ echo "[*] Compiling Kernel Core (src/main.c)..."
 gcc -m16 -march=i386 -ffreestanding -fno-pic -fno-PIE -fno-stack-protector -nostdlib -Isrc/app -c src/main.c -o build/main_c.o
 
 echo "[*] Compiling Filesystem Layer (src/fs.c)..."
-gcc -m16 -march=i386 -ffreestanding -fno-pic -fno-PIE -fno-stack-protector -nostdlib -Isrc/app -c src/fs.c -o build/fs.o
+# -Os for this file only: fs.c is plain C (no inline asm) and -O0 bloats it by
+# ~6 KB, which the 64K segment cannot spare. Its behaviour is covered by the
+# host-side FAT12 harness at -O1 too.
+gcc -m16 -march=i386 -Os -ffreestanding -fno-pic -fno-PIE -fno-stack-protector -nostdlib -Isrc/app -c src/fs.c -o build/fs.o
 
 # 4. Automatically discover and compile all modular files inside src/app/
 echo "[*] Compiling application modules from src/app/..."
@@ -58,13 +61,21 @@ ld -m elf_i386 -T linker.ld build/kernel_asm.o build/main_c.o build/fs.o $APP_OB
 echo "[*] Stripping BSS from kernel binary..."
 objcopy -O binary -j .text -j .rodata -j .data build/kernel.elf build/kernel.bin
 
+BSS_END=$(nm build/kernel.elf | awk '/ _bss_end$/{print $1}')
+STACK_HEADROOM=$(( 0xFFF0 - 16#$BSS_END ))
+echo "[+] Kernel BSS ends at 0x${BSS_END}; stack headroom ${STACK_HEADROOM} bytes"
+
 # 7. Combine and Pad into build/os.img
 echo "[*] Synthesizing final floppy disk image..."
 KERNEL_SIZE=$(stat -c%s build/kernel.bin)
 KERNEL_SECTORS=$(( (KERNEL_SIZE + 511) / 512 ))
 RESERVED_SECTORS=$(( KERNEL_SECTORS + 1 ))
-if (( RESERVED_SECTORS > 150 )); then
-    echo "    !! Kernel too big!"
+# src/boot.asm reads exactly this many sectors; anything larger is silently
+# truncated at boot, so fail here instead of shipping a broken image.
+KERNEL_MAX_SECTORS=78
+if (( KERNEL_SECTORS > KERNEL_MAX_SECTORS )); then
+    echo "    !! Kernel too big: ${KERNEL_SIZE} bytes (${KERNEL_SECTORS} sectors)"
+    echo "    !! src/boot.asm loads only ${KERNEL_MAX_SECTORS} sectors ($(( KERNEL_MAX_SECTORS * 512 )) bytes)"
     exit 1
 fi
 python3 -c "

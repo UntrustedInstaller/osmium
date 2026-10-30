@@ -33,6 +33,7 @@ const char* parse_switches(const char* args, uint16_t* flags);
 // Forward declarations for application entry points
 void cmd_help(const char* args);
 void cmd_clear(const char* args);
+void cmd_rescan(const char* args);
 void cmd_echo(const char* args);
 void cmd_mem(const char* args);
 void cmd_hexdump(const char* args);

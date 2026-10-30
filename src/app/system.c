@@ -1,8 +1,23 @@
 __asm__(".code16gcc\n");
 #include "apps.h"
+#include "fs.h"
 
 void cmd_clear(const char* args) {
     clear_screen();
+}
+
+void cmd_rescan(const char* args) {
+    uint8_t r = fs_reload();
+
+    if (r == 0) {
+        print_str("Filesystem re-read from disk; back at root.\r\n");
+        return;
+    }
+
+    error_chime();
+    if (r == 1)      print_str("ERR: No disk, or sector 0 unreadable\r\n");
+    else if (r == 2) print_str("ERR: Unsupported filesystem (need 512B FAT12, 2 FATs)\r\n");
+    else             print_str("ERR: Could not read FAT or root directory\r\n");
 }
 
 void cmd_mem(const char* args) {

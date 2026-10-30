@@ -26,6 +26,12 @@ extern filesystem_t fs;
 extern uint8_t fs_initialized;
 
 void fs_init(void);
+// Re-reads the BPB, FAT and root directory from the boot drive. Used after a
+// disk swap so new files become visible without a reboot. Resets the working
+// directory to the root. Returns 0 on success, 1 if sector 0 is unreadable
+// (no disk), 2 if the BPB is not a supported FAT12 layout (old volume is kept),
+// 3 if the FAT or root directory could not be read.
+uint8_t fs_reload(void);
 uint16_t fs_cluster_to_lba(uint16_t cluster);
 uint16_t fs_next_cluster(uint16_t cluster);
 // List the current directory. show_all != 0 also lists the "." and ".."

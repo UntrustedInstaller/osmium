@@ -52,27 +52,73 @@ static uint8_t escratch[32];       // scratch for copying a directory entry
 static void flush_fat(void);
 static void flush_root(void);
 
+// Validates a FAT12 BPB against the fixed cache sizes this kernel is built
+// with, then installs the geometry in `fs`. Nothing is written to fs until the
+// whole layout is accepted, so a foreign/odd disk cannot make the driver walk
+// off the 9-sector FAT or 14-sector root buffers.
+//
+// Restrictions are deliberate: this driver writes exactly one 512-byte sector
+// per cluster and flushes exactly two FAT copies, so other layouts are refused
+// rather than silently corrupted.
+static uint8_t fs_load_geometry(const uint8_t* b) {
+    if (b[0] != 0xEB && b[0] != 0xE9) return 1;   // not a boot sector
+    if ((b[11] | (b[12] << 8)) != 512) return 1;  // sector size
+    if (b[13] != 1 || b[16] != 2) return 1;       // 1 sector/cluster, 2 FATs
+
+    uint16_t res   = b[14] | (b[15] << 8);
+    uint16_t root  = b[17] | (b[18] << 8);
+    uint16_t total = b[19] | (b[20] << 8);
+    uint16_t spf   = b[22] | (b[23] << 8);
+    uint16_t rds   = (root + 15) >> 4;            // 16 entries per 512B sector
+    uint16_t fat   = spf * 2;
+
+    if (res == 0 || spf == 0 || spf > 9) return 1;  // FAT cache is 9 sectors
+    if (rds == 0 || rds > 14) return 1;             // root cache is 14 sectors
+    if (res >= total || fat >= total - res) return 1;
+    uint16_t rdlba = res + fat;
+    if (rds >= total - rdlba) return 1;
+    uint16_t fds = rdlba + rds;
+    uint16_t clusters = total - fds;                // spc == 1 here
+    if (clusters == 0 || clusters >= 4085) return 1;  // FAT12 only
+
+    fs.bytes_per_sector    = 512;
+    fs.sectors_per_cluster = 1;
+    fs.reserved_sectors    = res;
+    fs.num_fats            = 2;
+    fs.root_entries        = root;
+    fs.total_sectors       = total;
+    fs.sectors_per_fat     = spf;
+    fs.root_dir_sectors    = rds;
+    fs.root_dir_lba        = rdlba;
+    fs.first_data_sector   = fds;
+    fs.total_clusters      = clusters;
+    return 0;
+}
+
+// Re-reads the whole volume from disk. Returns:
+//   0 ok, 1 sector 0 unreadable (no disk / not ready),
+//   2 unsupported BPB (old volume left cached), 3 FAT or root unreadable.
+uint8_t fs_reload(void) {
+    // Probe sector 0 into scratch first: an empty drive must not clobber the
+    // currently cached volume.
+    if (read_sector(0, rd_sector)) return 1;
+    if (fs_load_geometry(rd_sector)) return 2;
+
+    // From here the cached FAT/root belong to the previous volume.
+    fs_initialized = 0;
+    if (read_sectors(fs.reserved_sectors, fs.sectors_per_fat, fs.sectors_per_fat_buf)) return 3;
+    if (read_sectors(fs.root_dir_lba, fs.root_dir_sectors, fs.root_dir_buf)) return 3;
+
+    // Cluster numbers from the old volume are meaningless now.
+    fs_cwd = 0;
+    fs_cwd_path[0] = 0;
+    fs_initialized = 1;
+    return 0;
+}
+
 void fs_init(void) {
     if (fs_initialized) return;
-    uint8_t boot[512];
-    read_sector(0, boot);
-
-    fs.bytes_per_sector    = boot[11] | (boot[12] << 8);
-    fs.sectors_per_cluster = boot[13];
-    fs.reserved_sectors    = boot[14] | (boot[15] << 8);
-    fs.num_fats            = boot[16];
-    fs.root_entries        = boot[17] | (boot[18] << 8);
-    fs.total_sectors       = boot[19] | (boot[20] << 8);
-    fs.sectors_per_fat     = boot[22] | (boot[23] << 8);
-
-    fs.root_dir_sectors = (fs.root_entries * 32 + fs.bytes_per_sector - 1) / fs.bytes_per_sector;
-    fs.root_dir_lba = fs.reserved_sectors + (fs.num_fats * fs.sectors_per_fat);
-    fs.first_data_sector = fs.root_dir_lba + fs.root_dir_sectors;
-    fs.total_clusters = (fs.total_sectors - fs.first_data_sector) / fs.sectors_per_cluster;
-
-    read_sectors(fs.reserved_sectors, fs.sectors_per_fat, fs.sectors_per_fat_buf);
-    read_sectors(fs.root_dir_lba, fs.root_dir_sectors, fs.root_dir_buf);
-    fs_initialized = 1;
+    fs_reload();
 }
 
 uint16_t fs_cluster_to_lba(uint16_t cluster) {
