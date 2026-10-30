@@ -131,7 +131,12 @@ img_fatsz=$(bpb "$TMP/img.boot" 22 2); dev_fatsz=$(bpb "$TMP/dev.boot" 22 2)
 if [ "$MODE" = inplace ]; then
     [ -n "$dev_res" ] && [ "$dev_res" -gt 0 ] \
         || die "$DEVICE has no FAT12 BPB (blank/unformatted); nothing to preserve - use --full"
-    for f in bps spc res fatn root fatsz; do
+    if [ "$img_res" != "$dev_res" ]; then
+        die "reserved sectors differ (image=$img_res device=$dev_res).
+This disk was formatted by a different build. Use --full once to adopt the image's
+reserved layout (${img_res} sectors); after that, in-place updates keep it fixed."
+    fi
+    for f in bps spc fatn root fatsz; do
         eval "a=\$img_$f; b=\$dev_$f"
         [ "$a" = "$b" ] || die "filesystem geometry mismatch ($f): image=$a device=$b.
 In-place update would corrupt your files. Use --full if you accept erasing everything."

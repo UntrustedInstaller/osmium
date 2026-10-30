@@ -16,8 +16,13 @@ void cmd_rescan(const char* args) {
 
     error_chime();
     if (r == 1)      print_str("ERR: No disk, or sector 0 unreadable\r\n");
-    else if (r == 2) print_str("ERR: Unsupported filesystem (need 512B FAT12, 2 FATs)\r\n");
-    else             print_str("ERR: Could not read FAT or root directory\r\n");
+    else if (r == 2) {
+        print_str("ERR: Unsupported filesystem (need 512B FAT12, 2 FATs)\r\n");
+        print_str("Cached volume dropped; insert a supported disk and run rescan.\r\n");
+    } else {
+        print_str("ERR: Could not read FAT or root directory\r\n");
+        print_str("Cached volume dropped; run rescan to retry.\r\n");
+    }
 }
 
 void cmd_mem(const char* args) {

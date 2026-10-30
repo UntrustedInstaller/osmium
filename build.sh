@@ -69,7 +69,6 @@ echo "[+] Kernel BSS ends at 0x${BSS_END}; stack headroom ${STACK_HEADROOM} byte
 echo "[*] Synthesizing final floppy disk image..."
 KERNEL_SIZE=$(stat -c%s build/kernel.bin)
 KERNEL_SECTORS=$(( (KERNEL_SIZE + 511) / 512 ))
-RESERVED_SECTORS=$(( KERNEL_SECTORS + 1 ))
 # src/boot.asm reads exactly this many sectors; anything larger is silently
 # truncated at boot, so fail here instead of shipping a broken image.
 KERNEL_MAX_SECTORS=78
@@ -78,6 +77,11 @@ if (( KERNEL_SECTORS > KERNEL_MAX_SECTORS )); then
     echo "    !! src/boot.asm loads only ${KERNEL_MAX_SECTORS} sectors ($(( KERNEL_MAX_SECTORS * 512 )) bytes)"
     exit 1
 fi
+# Keep the reserved region at a fixed 79 sectors regardless of kernel size.
+# Zero-padding the kernel means the FAT always starts at sector 79, so an
+# in-place flash-update never has to move the filesystem.
+RESERVED_SECTORS=$(( KERNEL_MAX_SECTORS + 1 ))
+truncate -s $(( KERNEL_MAX_SECTORS * 512 )) build/kernel.bin
 python3 -c "
 import sys
 d=open('build/boot.bin','rb').read()
@@ -92,7 +96,7 @@ truncate -s 1474560 build/os.img
 echo "[*] Creating FAT12 filesystem with mformat..."
 mformat -i build/os.img -B build/boot.bin -R $RESERVED_SECTORS -h 2 -t 80 -s 18 -c 1 :: 2>/dev/null
 echo "[+] FAT12 filesystem created (${RESERVED_SECTORS} reserved, 2 FATs, 224 root entries)."
-echo "    Kernel: ${KERNEL_SIZE} bytes (${KERNEL_SECTORS} sectors)"
+echo "    Kernel: ${KERNEL_SIZE} bytes (${KERNEL_SECTORS} sectors), padded to ${KERNEL_MAX_SECTORS} sectors"
 
 # 8. Build loadable modules
 echo "[*] Building loadable modules..."

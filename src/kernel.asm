@@ -373,6 +373,61 @@ asm_read_sectors:
     xor al, al
     ret
 
+; =====================================================================
+;   FLOPPY MEDIA-CHANGE DETECTION
+; =====================================================================
+; Returns AL:
+;   0 = no change
+;   1 = media changed (change line active)
+;   2 = change line not supported / drive not ready
+; Preserves every other register. AH=15h is checked first because some BIOSes
+; report AH=06h from AH=16h both when a change occurred and when the drive has
+; no change line at all.
+global asm_media_changed
+asm_media_changed:
+    push bx
+    push cx
+    push dx
+    push si
+    push es
+    push ds
+
+    xor si, si          ; AT&T 6300 crashes if SI != 0 on this call
+    mov ah, 0x15        ; get drive type
+    mov dl, [boot_drive]
+    int 0x13
+    jc .mc_unsupported
+    cmp ah, 0x02        ; 02h = diskette with change-line support
+    jne .mc_unsupported
+
+    xor si, si
+    mov ah, 0x16        ; detect disk change (clears the change line)
+    mov dl, [boot_drive]
+    int 0x13
+    jc .mc_active
+    cmp ah, 0x00        ; CF clear but an unexpected status: do not trust it
+    jne .mc_unsupported
+    xor al, al          ; CF clear, AH=00h: no change
+    jmp .mc_done
+
+.mc_active:
+    cmp ah, 0x06        ; 06h = change line active
+    jne .mc_unsupported
+    mov al, 1
+    jmp .mc_done
+
+.mc_unsupported:
+    mov al, 2
+
+.mc_done:
+    pop ds
+    pop es
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    ret
+
 ; Convert LBA to CHS for 1.44MB floppy (80 cyl, 2 heads, 18 sect/track)
 ; Input:  AX = LBA (0-2879)
 ; Output: CH = cylinder, CL = sector, DH = head

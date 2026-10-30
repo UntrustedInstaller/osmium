@@ -18,6 +18,7 @@ typedef struct {
     uint16_t root_dir_sectors;
     uint16_t first_data_sector;
     uint16_t total_clusters;
+    uint8_t volume_serial[4];
     uint8_t sectors_per_fat_buf[9 * 512];
     uint8_t root_dir_buf[14 * 512];
 } filesystem_t;
@@ -29,9 +30,16 @@ void fs_init(void);
 // Re-reads the BPB, FAT and root directory from the boot drive. Used after a
 // disk swap so new files become visible without a reboot. Resets the working
 // directory to the root. Returns 0 on success, 1 if sector 0 is unreadable
-// (no disk), 2 if the BPB is not a supported FAT12 layout (old volume is kept),
-// 3 if the FAT or root directory could not be read.
+// (no disk; cached volume kept), 2 if the BPB is not a supported FAT12 layout,
+// or 3 if the FAT/root could not be read. On 2 and 3 the cached volume is
+// dropped so no command can use the old geometry on a different disk.
 uint8_t fs_reload(void);
+
+// Returns 1 if the disk in the drive no longer matches the cached volume,
+// judged by the BPB volume serial and the first root-directory sector. Used as
+// a fallback when the BIOS has no floppy change-line support. Returns 0 when
+// there is no readable disk, leaving the cached volume untouched.
+uint8_t fs_media_mismatch(void);
 uint16_t fs_cluster_to_lba(uint16_t cluster);
 uint16_t fs_next_cluster(uint16_t cluster);
 // List the current directory. show_all != 0 also lists the "." and ".."

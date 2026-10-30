@@ -32,11 +32,14 @@ That's it. The script:
 
 ### Disk layout
 
-The first 79 sectors are reserved: one boot sector plus the 78 sectors the boot
-loader reads for the kernel. The FAT starts at sector 79, so the kernel binary
-must stay at or below **78 sectors (39,936 bytes)** or the filesystem will
-overwrite its tail. `build.sh` prints the free space implicitly — check
-`stat -c%s build/kernel.bin` if you add a lot of code.
+The first 79 sectors are always reserved: one boot sector plus the 78 sectors
+the boot loader reads for the kernel. `build.sh` zero-pads the kernel to exactly
+78 sectors, so the FAT always starts at sector 79 and an in-place
+`flash-update.sh` works across kernel growth without moving your files.
+
+The kernel must stay at or below **78 sectors (39,936 bytes)**. `build.sh`
+fails with the actual size if it does not fit, and prints the kernel size plus
+the remaining stack headroom on every build.
 
 ## Run
 

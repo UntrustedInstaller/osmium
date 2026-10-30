@@ -9,6 +9,7 @@ __asm__(".code16gcc\n");
 uint8_t cur_col = 0x1F;
 extern uint8_t boot_drive;
 extern void int60_handler(void);
+extern uint8_t asm_media_changed(void);
 
 //  HARDWARE ABSTRACTION LAYER
 void outb(uint16_t port, uint8_t val) {
@@ -454,7 +455,7 @@ static const struct cli_command cmd_table[] = {
     // ---- Files ----
     {"ls",       2, cmd_ls,      "List files in current dir", "[-a]"},
     {"df",       2, cmd_df,      "Show free disk space", "[-h]"},
-    {"rescan",   6, cmd_rescan,  "Re-read filesystem from disk", ""},
+    {"rescan",   6, cmd_rescan,  "Re-read filesystem (auto on swap)", ""},
     {"cat",      3, cmd_cat,     "View a text file", "[-n] <file>"},
     {"grep",     4, cmd_grep,    "Search a file for text", "[-i] [-n] [-v] <pattern> <file>"},
     {"cd",       2, cmd_cd,      "Change directory", "[path | -]"},
@@ -652,6 +653,11 @@ void cmd_df(const char* args) {
     args = parse_switches(args, &flags);
 
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) {
+        error_chime();
+        print_str("ERR: No readable filesystem. Insert a supported disk and run 'rescan'.\r\n");
+        return;
+    }
 
     uint16_t free_clusters = 0;
     for (uint16_t cluster = 2; cluster <= fs.total_clusters + 1; cluster++)
@@ -1081,6 +1087,41 @@ void cmd_rmdir(const char* args) {
 // =====================================================================
 //  IRIDIUM SHELL
 // =====================================================================
+
+// Some Award/AMI BIOSes never clear the floppy change line. Once we see that,
+// stop trusting it and confirm swaps with the volume fingerprint instead.
+static uint8_t media_cl_bad = 0;
+
+static uint8_t media_changed(void) {
+    uint8_t s = asm_media_changed();
+
+    if (s == 1) return media_cl_bad ? fs_media_mismatch() : 1;
+    if (s == 2) return fs_media_mismatch();  // no change-line support
+    return 0;
+}
+
+// Called once per command, before dispatch, so a swapped disk is picked up
+// without rebooting. The cached volume is kept if the drive is empty.
+static void media_poll(void) {
+    if (!media_changed()) return;
+
+    uint8_t r = fs_reload();
+
+    // Probe again: a BIOS that still reports a change right after a reload
+    // has a stuck change line, so fall back to fingerprinting from now on.
+    if (asm_media_changed() == 1) media_cl_bad = 1;
+
+    if (r == 0) {
+        print_str("Disk change detected; filesystem re-read from disk.\r\n");
+    } else if (r == 2) {
+        error_chime();
+        print_str("ERR: Unsupported filesystem on the new disk; volume dropped.\r\n");
+    } else if (r == 3) {
+        error_chime();
+        print_str("ERR: Could not read the new disk; volume dropped.\r\n");
+    }
+}
+
 void iridium_main() {
     install_api();
     boot_chime();
@@ -1093,6 +1134,10 @@ void iridium_main() {
     print_str("\r\n");
 
     load_theme();
+
+    // Clear any change-line state left over from booting so the first command
+    // after startup is not mistaken for a media swap.
+    asm_media_changed();
 
     char cmd_buf[CMD_MAX + 1];
     int cmd_idx, cur_pos;
@@ -1224,6 +1269,8 @@ void iridium_main() {
             hist_cur = -1;
             continue;
         }
+
+        media_poll();
 
         if (hist_count == 0 || strcmp(cmd_buf, history[(hist_next - 1 + HIST_SIZE) % HIST_SIZE]) != 0) {
             int i = 0;

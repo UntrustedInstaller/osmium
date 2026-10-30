@@ -42,6 +42,11 @@ uint8_t fs_initialized = 0;
 static uint8_t wr_sector[512];
 static uint8_t rd_sector[512];
 
+// Serial of the most recent disk we looked at, including one whose BPB we
+// rejected. Lets the fallback detector notice when that bad disk is replaced.
+static uint8_t media_serial[4];
+static uint8_t media_serial_ok = 0;
+
 // ---- current working directory state ----
 static uint16_t fs_cwd = 0;        // 0 = root directory
 static char fs_cwd_path[96];       // absolute display path, "" = root
@@ -92,26 +97,45 @@ static uint8_t fs_load_geometry(const uint8_t* b) {
     fs.root_dir_lba        = rdlba;
     fs.first_data_sector   = fds;
     fs.total_clusters      = clusters;
+    fs.volume_serial[0]    = b[39];
+    fs.volume_serial[1]    = b[40];
+    fs.volume_serial[2]    = b[41];
+    fs.volume_serial[3]    = b[42];
     return 0;
 }
 
 // Re-reads the whole volume from disk. Returns:
 //   0 ok, 1 sector 0 unreadable (no disk / not ready),
-//   2 unsupported BPB (old volume left cached), 3 FAT or root unreadable.
+//   2 unsupported BPB (cached volume dropped), 3 FAT or root unreadable
+//   (cached volume dropped).
 uint8_t fs_reload(void) {
     // Probe sector 0 into scratch first: an empty drive must not clobber the
     // currently cached volume.
     if (read_sector(0, rd_sector)) return 1;
-    if (fs_load_geometry(rd_sector)) return 2;
+
+    media_serial[0] = rd_sector[39];
+    media_serial[1] = rd_sector[40];
+    media_serial[2] = rd_sector[41];
+    media_serial[3] = rd_sector[42];
+    media_serial_ok = 1;
+
+    if (fs_load_geometry(rd_sector)) {
+        // The disk is readable but not a layout this driver can use. Drop the
+        // cached volume: using the old geometry on a different disk could
+        // corrupt it.
+        fs_initialized = 0;
+        fs_cwd = 0;
+        fs_cwd_path[0] = 0;
+        return 2;
+    }
 
     // From here the cached FAT/root belong to the previous volume.
     fs_initialized = 0;
+    fs_cwd = 0;
+    fs_cwd_path[0] = 0;
     if (read_sectors(fs.reserved_sectors, fs.sectors_per_fat, fs.sectors_per_fat_buf)) return 3;
     if (read_sectors(fs.root_dir_lba, fs.root_dir_sectors, fs.root_dir_buf)) return 3;
 
-    // Cluster numbers from the old volume are meaningless now.
-    fs_cwd = 0;
-    fs_cwd_path[0] = 0;
     fs_initialized = 1;
     return 0;
 }
@@ -119,6 +143,27 @@ uint8_t fs_reload(void) {
 void fs_init(void) {
     if (fs_initialized) return;
     fs_reload();
+}
+
+// Cheap fingerprint of the disk currently in the drive. Reading sector 0 is
+// enough to catch a different volume in almost all cases; comparing the first
+// root sector as well distinguishes same-serial disks and blank formats.
+uint8_t fs_media_mismatch(void) {
+    if (read_sector(0, rd_sector)) return 0;
+
+    // No reference yet: force a reload so we can learn this disk's identity.
+    if (!media_serial_ok) return 1;
+
+    // While invalid, compare against the rejected disk, not the lost cache, so
+    // the same bad disk is not re-read on every command.
+    const uint8_t* ref = fs_initialized ? fs.volume_serial : media_serial;
+    if (memcmp(rd_sector + 39, ref, 4) != 0) return 1;
+
+    if (!fs_initialized) return 0;   // same rejected disk: wait for a new one
+
+    if (read_sector(fs.root_dir_lba, rd_sector)) return 0;
+    if (memcmp(rd_sector, fs.root_dir_buf, 512) != 0) return 1;
+    return 0;
 }
 
 uint16_t fs_cluster_to_lba(uint16_t cluster) {
@@ -534,6 +579,7 @@ const char* fs_get_cwd_path(void) {
 
 uint8_t fs_cd(const char* path) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
     uint16_t target;
     if (resolve_dir(fs_cwd, path ? path : "", &target)) return 1;
     fs_cwd = target;
@@ -620,7 +666,13 @@ static void list_print_entry(const uint8_t* e, uint32_t* files, uint32_t* dirs) 
 }
 
 void fs_list_dir(uint8_t show_all) {
-    if (!fs_initialized) fs_init();
+    if (!fs_initialized) {
+        fs_init();
+        if (!fs_initialized) {
+            print_str("ERR: No readable filesystem. Insert a supported disk and run 'rescan'.\r\n");
+            return;
+        }
+    }
 
     if (fs_cwd != 0) {
         print_str("Directory: OS:");
@@ -671,6 +723,7 @@ void fs_list_dir(uint8_t show_all) {
 
 uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
 
     uint16_t parent, cluster;
     uint32_t size;
@@ -766,6 +819,7 @@ static void free_chain(uint16_t start) {
 
 uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
 
     uint16_t parent;
     char dos[12];
@@ -857,6 +911,7 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size) {
 
 uint8_t fs_delete_file(const char* name) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
 
     uint16_t parent;
     char dos[12];
@@ -880,6 +935,7 @@ uint8_t fs_delete_file(const char* name) {
 
 uint8_t fs_mkdir(const char* path) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
     if (!path || !path[0]) return 1;
 
     uint16_t parent;
@@ -930,6 +986,7 @@ uint8_t fs_mkdir(const char* path) {
 // Like fs_mkdir, but creates any missing parent directories first.
 uint8_t fs_mkdir_p(const char* path) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
     if (!path || !path[0]) return 1;
 
     char tmp[80];
@@ -956,6 +1013,7 @@ uint8_t fs_mkdir_p(const char* path) {
 
 uint8_t fs_rmdir(const char* path) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
     if (!path || !path[0]) return 1;
 
     uint16_t parent;
@@ -1037,6 +1095,7 @@ static uint8_t rm_tree_children(uint16_t dircluster, uint8_t depth) {
 //   0 ok, 1 not found, 2 could not remove (depth/disk error), 4 directory in use
 uint8_t fs_rm_recursive(const char* path) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
     if (!path || !path[0]) return 1;
 
     uint16_t parent;
@@ -1074,6 +1133,7 @@ uint8_t fs_rm_recursive(const char* path) {
 // (for directories) fix the ".." link inside the moved directory.
 uint8_t fs_rename(const char* old_name, const char* new_name) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
 
     uint16_t parent1;
     char dos1[12];
@@ -1206,6 +1266,7 @@ static uint8_t copy_dir_rec(const char* src, const char* dst, void* buf, uint16_
 
 uint8_t fs_copy(const char* src, const char* dst, void* buf, uint16_t buf_size) {
     if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 1;
 
     uint16_t parent;
     char dos[12];
