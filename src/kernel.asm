@@ -428,6 +428,28 @@ asm_media_changed:
     pop bx
     ret
 
+; =====================================================================
+;   DRIVE TYPE QUERY
+; =====================================================================
+; Returns AX:
+;   AL = 0 on success, 1 if the BIOS rejected the call
+;   AH = BIOS drive type (0 none, 1 diskette without change line,
+;        2 diskette with change line, 3 fixed disk)
+; Unlike AH=16h this does not clear the change line, so it is safe to call
+; from a diagnostic command.
+global asm_drive_type
+asm_drive_type:
+    push dx
+    mov ah, 0x15        ; get drive type
+    mov dl, [boot_drive]
+    int 0x13
+    mov al, 0
+    jnc .dt_done
+    mov al, 1
+.dt_done:
+    pop dx
+    ret
+
 ; Convert LBA to CHS for 1.44MB floppy (80 cyl, 2 heads, 18 sect/track)
 ; Input:  AX = LBA (0-2879)
 ; Output: CH = cylinder, CL = sector, DH = head

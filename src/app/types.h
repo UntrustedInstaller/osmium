@@ -14,6 +14,8 @@ void clear_screen(void);
 void render_pal_mtx(void);
 void print_pal_block(char c1, char c2, uint8_t color);
 void print_int(uint16_t val);
+void print_hex_byte(uint8_t byte);
+void print_hex_word(uint16_t word);
 void play_note(uint16_t freq, uint16_t ms);
 void error_chime(void);
 void critical_chime(void);

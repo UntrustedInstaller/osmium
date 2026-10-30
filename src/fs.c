@@ -145,25 +145,31 @@ void fs_init(void) {
     fs_reload();
 }
 
-// Cheap fingerprint of the disk currently in the drive. Reading sector 0 is
-// enough to catch a different volume in almost all cases; comparing the first
-// root sector as well distinguishes same-serial disks and blank formats.
-uint8_t fs_media_mismatch(void) {
+// Read-only snapshot of the drive for diagnostics. Never changes the cache or
+// clears the BIOS change line. Returns:
+//   0 no readable sector 0, 1 disk matches the cached volume,
+//   2 a readable disk that differs from the cache (or no cache yet),
+//   3 the same readable disk whose volume was rejected earlier.
+uint8_t fs_disk_state(void) {
     if (read_sector(0, rd_sector)) return 0;
-
-    // No reference yet: force a reload so we can learn this disk's identity.
-    if (!media_serial_ok) return 1;
+    if (!media_serial_ok) return 2;
 
     // While invalid, compare against the rejected disk, not the lost cache, so
     // the same bad disk is not re-read on every command.
     const uint8_t* ref = fs_initialized ? fs.volume_serial : media_serial;
-    if (memcmp(rd_sector + 39, ref, 4) != 0) return 1;
-
-    if (!fs_initialized) return 0;   // same rejected disk: wait for a new one
+    if (memcmp(rd_sector + 39, ref, 4) != 0) return 2;
+    if (!fs_initialized) return 3;   // same rejected disk: wait for a new one
 
     if (read_sector(fs.root_dir_lba, rd_sector)) return 0;
-    if (memcmp(rd_sector, fs.root_dir_buf, 512) != 0) return 1;
-    return 0;
+    if (memcmp(rd_sector, fs.root_dir_buf, 512) != 0) return 2;
+    return 1;
+}
+
+// Cheap fingerprint of the disk currently in the drive. Reading sector 0 is
+// enough to catch a different volume in almost all cases; comparing the first
+// root sector as well distinguishes same-serial disks and blank formats.
+uint8_t fs_media_mismatch(void) {
+    return fs_disk_state() == 2;
 }
 
 uint16_t fs_cluster_to_lba(uint16_t cluster) {

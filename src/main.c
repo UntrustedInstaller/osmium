@@ -456,6 +456,7 @@ static const struct cli_command cmd_table[] = {
     {"ls",       2, cmd_ls,      "List files in current dir", "[-a]"},
     {"df",       2, cmd_df,      "Show free disk space", "[-h]"},
     {"rescan",   6, cmd_rescan,  "Re-read filesystem (auto on swap)", ""},
+    {"diskinfo", 8, cmd_diskinfo,"Drive, media and volume state", ""},
     {"cat",      3, cmd_cat,     "View a text file", "[-n] <file>"},
     {"grep",     4, cmd_grep,    "Search a file for text", "[-i] [-n] [-v] <pattern> <file>"},
     {"cd",       2, cmd_cd,      "Change directory", "[path | -]"},
@@ -481,7 +482,7 @@ static const struct cli_command cmd_table[] = {
 
 #define CMD_COUNT (sizeof(cmd_table) / sizeof(struct cli_command))
 
-static const uint8_t help_sections[] = {8, 20, 26};
+static const uint8_t help_sections[] = {8, 21, 27};
 
 static void more_prompt(int* count) {
     (*count)++;

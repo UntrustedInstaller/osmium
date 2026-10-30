@@ -40,6 +40,10 @@ uint8_t fs_reload(void);
 // a fallback when the BIOS has no floppy change-line support. Returns 0 when
 // there is no readable disk, leaving the cached volume untouched.
 uint8_t fs_media_mismatch(void);
+
+// Read-only drive snapshot for diagnostics (see the return codes in fs.c).
+// Does not alter the cache or clear the BIOS change line.
+uint8_t fs_disk_state(void);
 uint16_t fs_cluster_to_lba(uint16_t cluster);
 uint16_t fs_next_cluster(uint16_t cluster);
 // List the current directory. show_all != 0 also lists the "." and ".."
