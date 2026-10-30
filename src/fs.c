@@ -176,7 +176,21 @@ uint16_t fs_cluster_to_lba(uint16_t cluster) {
     return fs.first_data_sector + (cluster - 2) * fs.sectors_per_cluster;
 }
 
+// True only for a data cluster that really exists on this volume. Cluster 0
+// and 1 are FAT markers, and anything above total_clusters+1 would make
+// fs_cluster_to_lba() address a sector outside the disk and make the FAT
+// helpers read or write past their fixed-size cache. Every cluster number
+// that comes off the disk (a directory entry or a ".." link) has to pass
+// this before it is used for anything.
+static int cluster_in_range(uint16_t cluster) {
+    return cluster >= 2 && cluster <= fs.total_clusters + 1;
+}
+
 static uint16_t get_fat_entry(uint16_t cluster) {
+    // Seatbelt: a bad caller or a corrupt chain must never index outside
+    // sectors_per_fat_buf. Treating it as end-of-chain makes every walk stop
+    // instead of wandering into root_dir_buf.
+    if (!cluster_in_range(cluster)) return FAT_EOF;
     uint32_t offset = cluster * 3 / 2;
     uint16_t word = fs.sectors_per_fat_buf[offset] | ((uint16_t)fs.sectors_per_fat_buf[offset + 1] << 8);
     if (cluster % 2 == 0) return word & 0x0FFF;
@@ -184,6 +198,7 @@ static uint16_t get_fat_entry(uint16_t cluster) {
 }
 
 static void set_fat_entry(uint16_t cluster, uint16_t value) {
+    if (!cluster_in_range(cluster)) return;   // never write outside the FAT cache
     uint32_t offset = cluster * 3 / 2;
     uint16_t word = fs.sectors_per_fat_buf[offset] | ((uint16_t)fs.sectors_per_fat_buf[offset + 1] << 8);
     if (cluster % 2 == 0) {
@@ -336,7 +351,8 @@ static uint8_t dir_scan(uint16_t dc, const char* dos11,
     }
 
     uint16_t c = dc;
-    while (c >= 2 && c < FAT_EOF) {
+    uint16_t steps = 0;
+    while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
         read_sector(fs_cluster_to_lba(c), dir_sec);
         for (int j = 0; j < 16; j++) {
             uint8_t* e = dir_sec + j * 32;
@@ -385,7 +401,8 @@ static uint8_t dir_scan_cluster(uint16_t dc, uint16_t cluster, char* out_dos11) 
         return 0;
     }
     uint16_t c = dc;
-    while (c >= 2 && c < FAT_EOF) {
+    uint16_t steps = 0;
+    while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
         read_sector(fs_cluster_to_lba(c), dir_sec);
         for (int j = 0; j < 16; j++) {
             uint8_t* e = dir_sec + j * 32;
@@ -411,7 +428,7 @@ static uint16_t dir_parent(uint16_t dc) {
     uint16_t cc;
     uint32_t cs;
     uint8_t ca;
-    if (dir_scan(dc, dd, &m, &cc, &cs, &ca, 0, 0)) return cc;
+    if (dir_scan(dc, dd, &m, &cc, &cs, &ca, 0, 0)) return cluster_in_range(cc) ? cc : 0;
     return 0;
 }
 
@@ -439,11 +456,16 @@ static uint8_t dir_alloc_slot(uint16_t dc, fs_entry_t* out) {
     uint16_t newc = find_free_cluster(2);
     if (newc == 0) return 1;
     uint16_t c = dc;
-    while (c >= 2 && c < FAT_EOF) {
+    uint16_t steps = 0;
+    while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
         uint16_t nx = get_fat_entry(c);
         if (nx >= FAT_EOF) break;
         c = nx;
     }
+    // A cycle or an out-of-range tail means we cannot tell where this
+    // directory really ends; refuse rather than attach the new cluster to
+    // the wrong place.
+    if (!cluster_in_range(c) || steps > fs.total_clusters) return 1;
     set_fat_entry(c, newc);
     set_fat_entry(newc, FAT_EOF);
     flush_fat();
@@ -493,6 +515,7 @@ static uint8_t resolve_to(uint16_t start, const char* path, uint16_t* out_parent
         uint8_t ca;
         if (!dir_scan(dc, d, &m, &cc, &cs, &ca, 0, 0)) return 1;
         if (!(ca & 0x10)) return 1;         // not a directory
+        if (!cluster_in_range(cc)) return 1; // corrupt directory entry
         dc = cc;
     }
 }
@@ -533,6 +556,7 @@ static uint8_t resolve_dir(uint16_t start, const char* path, uint16_t* out) {
             uint8_t ca;
             if (!dir_scan(dc, d, &m, &cc, &cs, &ca, 0, 0)) return 1;
             if (!(ca & 0x10)) return 1;
+            if (!cluster_in_range(cc)) return 1;   // corrupt directory entry
             *out = cc;
             return 0;
         }
@@ -547,6 +571,7 @@ static uint8_t resolve_dir(uint16_t start, const char* path, uint16_t* out) {
         uint8_t ca;
         if (!dir_scan(dc, d, &m, &cc, &cs, &ca, 0, 0)) return 1;
         if (!(ca & 0x10)) return 1;
+        if (!cluster_in_range(cc)) return 1;   // corrupt directory entry
         dc = cc;
     }
     *out = dc;
@@ -701,7 +726,8 @@ void fs_list_dir(uint8_t show_all) {
         }
     } else {
         uint16_t c = fs_cwd;
-        while (c >= 2 && c < FAT_EOF) {
+        uint16_t steps = 0;
+        while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
             read_sector(fs_cluster_to_lba(c), dir_sec);
             for (int j = 0; j < 16; j++) {
                 uint8_t* e = dir_sec + j * 32;
@@ -741,7 +767,7 @@ uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     if (!dir_scan(parent, dos, &m, &cluster, &size, &attr, 0, 0)) return 1;
     if (attr & 0x10) return 1;                   // can't read a directory as a file
     if (size == 0 || max == 0) return 0;         // nothing to read, nothing to touch
-    if (cluster < 2) return 1;                   // malformed entry: data but no chain
+    if (!cluster_in_range(cluster)) return 1;    // malformed entry: not a real data cluster
 
     uint32_t read = 0;
     while (read < size && read < max) {
@@ -812,10 +838,13 @@ static void flush_root(void) {
         write_sector(fs.root_dir_lba + i, fs.root_dir_buf + i * 512);
 }
 
-// Frees a cluster chain back to the free list.
+// Frees a cluster chain back to the free list. The step budget stops a
+// cyclic chain from spinning forever; the range test stops it from touching
+// a FAT entry that does not belong to this volume.
 static void free_chain(uint16_t start) {
     uint16_t c = start;
-    while (c >= 2 && c < FAT_EOF) {
+    uint16_t steps = 0;
+    while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
         uint16_t next = get_fat_entry(c);
         set_fat_entry(c, FAT_FREE);
         if (next >= FAT_EOF) break;
@@ -1034,13 +1063,15 @@ uint8_t fs_rmdir(const char* path) {
     if (!(ca & 0x10)) return 2;                                     // not a directory
 
     // Refuse if the current directory (or an ancestor of it) is the target.
-    for (uint16_t t = fs_cwd; t != 0; t = dir_parent(t))
+    uint16_t up = 0;
+    for (uint16_t t = fs_cwd; t != 0 && ++up <= fs.total_clusters + 2; t = dir_parent(t))
         if (t == cc) return 4;
 
     // Must only contain "." and "..".
-    if (cc >= 2) {
+    if (cluster_in_range(cc)) {
         uint16_t c = cc;
-        while (c >= 2 && c < FAT_EOF) {
+        uint16_t steps = 0;
+        while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
             read_sector(fs_cluster_to_lba(c), dir_sec);
             for (int j = 0; j < 16; j++) {
                 uint8_t* e = dir_sec + j * 32;
@@ -1072,7 +1103,8 @@ static uint8_t rm_tree_children(uint16_t dircluster, uint8_t depth) {
     if (depth > 8) return 1;
 
     uint16_t c = dircluster;
-    while (c >= 2 && c < FAT_EOF) {
+    uint16_t steps = 0;
+    while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
         for (int j = 0; j < 16; j++) {
             read_sector(fs_cluster_to_lba(c), dir_sec);
             uint8_t* e = dir_sec + j * 32;
@@ -1082,10 +1114,10 @@ static uint8_t rm_tree_children(uint16_t dircluster, uint8_t depth) {
             if (e[0] == '.' && (e[1] == ' ' || e[1] == '.')) continue;
 
             uint16_t ec = e[26] | (e[27] << 8);
-            if (e[11] & 0x10) {                         // subdirectory
+            if ((e[11] & 0x10) && cluster_in_range(ec)) {   // real subdirectory
                 if (rm_tree_children(ec, depth + 1)) return 1;
             }
-            if (ec >= 2) free_chain(ec);
+            if (cluster_in_range(ec)) free_chain(ec);
 
             // The recursive walk / free_chain clobbered dir_sec — reload.
             read_sector(fs_cluster_to_lba(c), dir_sec);
@@ -1116,15 +1148,16 @@ uint8_t fs_rm_recursive(const char* path) {
 
     if (ca & 0x10) {
         // Refuse if the target is the current directory or one of its ancestors.
-        for (uint16_t t = fs_cwd; t != 0; t = dir_parent(t))
+        uint16_t up = 0;
+        for (uint16_t t = fs_cwd; t != 0 && ++up <= fs.total_clusters + 2; t = dir_parent(t))
             if (t == cc) return 4;
 
-        if (cc >= 2) {
+        if (cluster_in_range(cc)) {
             if (rm_tree_children(cc, 0)) return 2;
             free_chain(cc);
         }
     } else {
-        if (cc >= 2) free_chain(cc);
+        if (cluster_in_range(cc)) free_chain(cc);
     }
     flush_fat();
 
@@ -1235,7 +1268,8 @@ static uint8_t copy_dir_rec(const char* src, const char* dst, void* buf, uint16_
 
     char child_src[96], child_dst[96];
     uint16_t c = cluster;
-    while (c >= 2 && c < FAT_EOF) {
+    uint16_t steps = 0;
+    while (cluster_in_range(c) && ++steps <= fs.total_clusters) {
         for (int j = 0; j < 16; j++) {
             // Re-read the sector each iteration: recursive/file-copy calls
             // below reuse the shared dir_sec scratch buffer.
