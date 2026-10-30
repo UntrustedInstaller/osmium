@@ -523,19 +523,19 @@ void cmd_help(const char* args) {
 #define HIST_SIZE 5
 #define CMD_MAX 63
 
-// Prompt: "OS>" in the root directory, "OS:\DIR\SUB>" inside directories.
+// Prompt: "OS:\>" in the root directory, "OS:\DIR\SUB>" inside directories.
 static uint8_t prom_len(void) {
-    if (fs_get_cwd() == 0) return 3;   // "OS>"
     const char* p = fs_get_cwd_path();
-    uint8_t n = 3;                 // "OS:"
+    uint8_t n = 3;                     // "OS:"
+    if (*p == 0) n++;                  // root: the backslash
     while (*p) { n++; p++; }
-    return n + 1;                  // + ">"
+    return n + 1;                      // + ">"
 }
 
 static void prom_print(void) {
-    if (fs_get_cwd() == 0) { print_str("OS>"); return; }
     print_str("OS:");
-    print_str(fs_get_cwd_path());
+    if (fs_get_cwd_path()[0] == 0) print_char('\\');
+    else print_str(fs_get_cwd_path());
     print_char('>');
 }
 
