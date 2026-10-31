@@ -8,6 +8,12 @@ typedef unsigned int uint32_t;
 #define MODULE_ARGS ((const char*)0xFC00)
 #define MODULE_SEGMENT 0x2000
 
+// INT 60h contract: the handler preserves DS/SI/DI/ES (and restores the
+// caller's SS:SP); the C code it calls preserves BX/BP/SI/DI. AX/CX/DX are
+// caller-saved. Each stub below declares exactly the registers its handler
+// path destroys, with input registers the handler reuses written as in-out
+// ("+c"/"+d"/"+a") rather than as inputs plus clobbers.
+
 // Think it'd be fun to add an int21h translator for DOS binary compatibility?
 // Keep our .BIN programs and DOS .EXE/.COM programs seperate as to distinguish to both the user and the kernel which is which
 // Getting some sort of DOS compatibility layer would be fun, and as a bonus it gets more code running on the OS. 
@@ -51,8 +57,8 @@ static inline void print_char(char c) {
 }
 
 static inline uint16_t get_key(void) {
-    uint16_t k;
-    __asm__ __volatile__("int $0x60" : "=a"(k) : "c"(2) : "dx", "memory");
+    uint16_t k, fn = 2;
+    __asm__ __volatile__("int $0x60" : "=a"(k), "+c"(fn) : : "dx", "memory");
     return k;
 }
 
@@ -61,19 +67,20 @@ static inline void clear_screen(void) {
 }
 
 static inline void gotoxy(uint8_t col, uint8_t row) {
-    __asm__ __volatile__("int $0x60" : : "c"(4), "d"((row << 8) | col) : "ax", "memory");
+    __asm__ __volatile__("int $0x60" : : "c"(4), "d"((row << 8) | col) : "ax", "bx", "memory");
 }
 
 static inline uint8_t read_sector(uint16_t lba, void* buffer) {
     uint8_t status;
     uint16_t buf_off = (uint16_t)(uint32_t)buffer;
+    uint16_t fn = 5;
     __asm__ __volatile__(
         "pushw %%es\n\t"
         "pushw %%ds\n\t"
         "popw %%es\n\t"
         "int $0x60\n\t"
         "popw %%es\n\t"
-        : "=a"(status) : "c"(5), "a"(lba), "b"(buf_off) : "dx", "memory"
+        : "=a"(status), "+c"(fn) : "a"(lba), "b"(buf_off) : "dx", "memory"
     );
     return status;
 }
@@ -81,26 +88,27 @@ static inline uint8_t read_sector(uint16_t lba, void* buffer) {
 static inline uint8_t write_sector(uint16_t lba, void* buffer) {
     uint8_t status;
     uint16_t buf_off = (uint16_t)(uint32_t)buffer;
+    uint16_t fn = 6;
     __asm__ __volatile__(
         "pushw %%es\n\t"
         "pushw %%ds\n\t"
         "popw %%es\n\t"
         "int $0x60\n\t"
         "popw %%es\n\t"
-        : "=a"(status) : "c"(6), "a"(lba), "b"(buf_off) : "dx", "memory"
+        : "=a"(status), "+c"(fn) : "a"(lba), "b"(buf_off) : "dx", "memory"
     );
     return status;
 }
 
 static inline void get_cursor_rc(uint8_t* row, uint8_t* col) {
-    uint16_t rc;
-    __asm__ __volatile__("int $0x60" : "=d"(rc) : "c"(7) : "ax", "memory");
+    uint16_t rc, fn = 7;
+    __asm__ __volatile__("int $0x60" : "=d"(rc), "+c"(fn) : : "ax", "bx", "memory");
     *row = (rc >> 8) & 0xFF;
     *col = rc & 0xFF;
 }
 
 static inline void print_int(uint16_t val) {
-    __asm__ __volatile__("int $0x60" : : "c"(8), "a"(val) : );
+    __asm__ __volatile__("int $0x60" : "+a"(val) : "c"(8) : "memory");
 }
 
 static inline uint8_t get_cur_col(void) {
@@ -114,8 +122,8 @@ static inline void set_cur_col(uint8_t attr) {
 }
 
 static inline uint16_t get_mem_size(void) {
-    uint16_t sz;
-    __asm__ __volatile__("int $0x60" : "=a"(sz) : "c"(13) : "dx", "memory");
+    uint16_t sz, fn = 13;
+    __asm__ __volatile__("int $0x60" : "=a"(sz), "+c"(fn) : : "dx", "memory");
     return sz;
 }
 
@@ -126,33 +134,38 @@ static inline uint16_t get_kernel_end(void) {
 }
 
 static inline void play_note(uint16_t freq, uint16_t ms) {
-    __asm__ __volatile__("int $0x60" : : "c"(15), "a"(freq), "d"(ms) : "memory");
+    uint16_t fn = 15;
+    __asm__ __volatile__("int $0x60" : "+a"(freq), "+d"(ms), "+c"(fn) : : "memory");
 }
 
 static inline void error_chime(void) {
-    __asm__ __volatile__("int $0x60" : : "c"(16) : "memory");
+    uint16_t fn = 16;
+    __asm__ __volatile__("int $0x60" : "+c"(fn) : : "ax", "dx", "memory");
 }
 
 static inline void critical_chime(void) {
-    __asm__ __volatile__("int $0x60" : : "c"(17) : "memory");
+    uint16_t fn = 17;
+    __asm__ __volatile__("int $0x60" : "+c"(fn) : : "ax", "dx", "memory");
 }
 
 static inline void question_chime(void) {
-    __asm__ __volatile__("int $0x60" : : "c"(18) : "memory");
+    uint16_t fn = 18;
+    __asm__ __volatile__("int $0x60" : "+c"(fn) : : "ax", "dx", "memory");
 }
 
 static inline uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     uint8_t status;
     uint16_t name_off = (uint16_t)(uint32_t)name;
     uint16_t buf_off = (uint16_t)(uint32_t)buf;
+    uint16_t fn = 9, maxv = max;
     __asm__ __volatile__(
         "pushw %%es\n\t"
         "pushw %%ds\n\t"
         "popw %%es\n\t"
         "int $0x60\n\t"
         "popw %%es\n\t"
-        : "=a"(status)
-        : "c"(9), "b"(name_off), "a"(buf_off), "d"(max)
+        : "=a"(status), "+c"(fn), "+d"(maxv)
+        : "a"(buf_off), "b"(name_off)
         : "memory"
     );
     return status;
@@ -162,14 +175,15 @@ static inline uint8_t fs_write_file(const char* name, const void* data, uint16_t
     uint8_t status;
     uint16_t name_off = (uint16_t)(uint32_t)name;
     uint16_t data_off = (uint16_t)(uint32_t)data;
+    uint16_t fn = 10, sizev = size;
     __asm__ __volatile__(
         "pushw %%es\n\t"
         "pushw %%ds\n\t"
         "popw %%es\n\t"
         "int $0x60\n\t"
         "popw %%es\n\t"
-        : "=a"(status)
-        : "c"(10), "b"(name_off), "a"(data_off), "d"(size)
+        : "=a"(status), "+c"(fn), "+d"(sizev)
+        : "a"(data_off), "b"(name_off)
         : "memory"
     );
     return status;
