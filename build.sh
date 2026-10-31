@@ -9,6 +9,12 @@ echo "=============================================="
 mkdir -p build
 mkdir -p build/app
 
+# The loader copies MODULE_SECTORS sectors into a fixed staging buffer. Keep
+# this in sync with src/app/types.h so an oversized module fails the build
+# instead of being silently truncated at run time.
+MODULE_SECTORS=$(sed -n 's/^#define MODULE_SECTORS[[:space:]]*\([0-9][0-9]*\).*/\1/p' src/app/types.h)
+MODULE_MAX_BYTES=$((MODULE_SECTORS * 512))
+
 # 1. Assemble Stage 1 (Boot Sector) stays raw flat binary
 echo "[*] Assembling Stage 1 (src/boot.asm)..."
 nasm -f bin src/boot.asm -o build/boot.bin
@@ -108,8 +114,14 @@ build_module() {
     gcc -m16 -march=i386 -ffreestanding -fno-pic -fno-PIE -fno-stack-protector -nostdlib -Isrc/app -c "src/app/${name}.c" -o "build/mod_${name}.o"
     nasm -f elf32 src/module_entry.asm -o "build/mod_entry_${name}.o"
     ld -m elf_i386 -T src/module.ld "build/mod_entry_${name}.o" "build/mod_${name}.o" -o "build/${name}.mod"
-    
-    echo "    -> ${name}.mod built ($(stat -c%s "build/${name}.mod") bytes)"
+
+    local size
+    size=$(stat -c%s "build/${name}.mod")
+    if [ "$size" -gt "$MODULE_MAX_BYTES" ]; then
+        echo "[!] ${name}.mod is ${size} bytes: the loader buffer holds ${MODULE_MAX_BYTES} (${MODULE_SECTORS} sectors)." >&2
+        exit 1
+    fi
+    echo "    -> ${name}.mod built (${size} bytes)"
 }
 
 build_module "snake"

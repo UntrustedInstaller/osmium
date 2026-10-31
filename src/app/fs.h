@@ -50,6 +50,9 @@ uint16_t fs_next_cluster(uint16_t cluster);
 // entries of subdirectories.
 void fs_list_dir(uint8_t show_all);
 uint8_t fs_read_file(const char* name, void* buf, uint16_t max);
+// fs_file_size: byte length of a file, or 0xFFFFFFFF when it is missing or is
+// a directory. Kernel-side helper; not part of the INT 60h module API.
+uint32_t fs_file_size(const char* name);
 uint8_t fs_write_file(const char* name, const void* data, uint32_t size);
 // fs_delete_file: 0 ok, 1 not found, 2 is a directory, 5 disk write failed
 uint8_t fs_delete_file(const char* name);

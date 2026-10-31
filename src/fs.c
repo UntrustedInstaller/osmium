@@ -782,6 +782,25 @@ void fs_list_dir(uint8_t show_all) {
 //  FILE I/O
 // =====================================================================
 
+// Byte length of a file, or 0xFFFFFFFF when it is missing or is a directory.
+// fs_read_file() silently stops at the caller's `max`, so a loader with a
+// fixed-size buffer needs this to tell "fits" from "would be truncated".
+uint32_t fs_file_size(const char* name) {
+    if (!fs_initialized) fs_init();
+    if (!fs_initialized) return 0xFFFFFFFFu;
+
+    uint16_t parent, cluster;
+    uint32_t size;
+    char dos[12];
+    fs_entry_t m;
+    uint8_t attr;
+
+    if (resolve_to(fs_cwd, name, &parent, dos)) return 0xFFFFFFFFu;
+    if (!dir_scan(parent, dos, &m, &cluster, &size, &attr, 0, 0)) return 0xFFFFFFFFu;
+    if (attr & 0x10) return 0xFFFFFFFFu;
+    return size;
+}
+
 uint8_t fs_read_file(const char* name, void* buf, uint16_t max) {
     if (!fs_initialized) fs_init();
     if (!fs_initialized) return 1;

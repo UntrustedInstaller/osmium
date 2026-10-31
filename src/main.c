@@ -140,6 +140,17 @@ static void install_api(void) {
 
 static uint8_t mod_buf[MODULE_SECTORS * 512];
 
+// Load a module image only when it really fits. fs_read_file() truncates at
+// the buffer size without complaining, which would hand a half-image to the
+// module's entry point. Returns 0 ok, 1 not found/read error, 2 too large.
+static uint8_t load_module_file(const char* path) {
+    uint32_t size = fs_file_size(path);
+    if (size == 0xFFFFFFFFu) return 1;
+    if (size > sizeof(mod_buf)) return 2;
+    memset(mod_buf, 0, sizeof(mod_buf));
+    return fs_read_file(path, mod_buf, sizeof(mod_buf)) ? 1 : 0;
+}
+
 static void call_module_buf(const char* args) {
     uint16_t buf_off, args_off;
 
@@ -260,8 +271,9 @@ static int try_load_and_run(const char* name, const char* args) {
     }
     fname[i] = '\0';
 
-    memset(mod_buf, 0, sizeof(mod_buf));
-    if (fs_read_file(fname, mod_buf, sizeof(mod_buf))) {
+    uint8_t lr = load_module_file(fname);
+    if (lr) {
+        if (lr == 2) return 2;          // exists here, but will not fit
         // Not found relative to the current directory — modules (edit, basic,
         // snake, brainfuck) live in the root, so retry with an absolute path.
         char root[64];
@@ -269,8 +281,8 @@ static int try_load_and_run(const char* name, const char* args) {
         if (fname[0] != '\\' && fname[0] != '/') root[k++] = '\\';
         for (int j = 0; fname[j] && k < 63; j++) root[k++] = fname[j];
         root[k] = '\0';
-        memset(mod_buf, 0, sizeof(mod_buf));
-        if (fs_read_file(root, mod_buf, sizeof(mod_buf))) return 1;
+        lr = load_module_file(root);
+        if (lr) return lr;
     }
     call_module_buf(args);
     return 0;
@@ -294,7 +306,12 @@ void cmd_exec(const char* args) {
     while (*p && *p != ' ') p++;
     while (*p == ' ') p++;
 
-    if (try_load_and_run(name, p)) {
+    uint8_t r = try_load_and_run(name, p);
+    if (r == 2) {
+        print_str("ERR: '");
+        print_str(name);
+        print_str("' is too large to load\r\n");
+    } else if (r) {
         print_str("ERR: '");
         print_str(name);
         print_str("' not found\r\n");
