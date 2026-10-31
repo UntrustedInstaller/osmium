@@ -83,7 +83,15 @@ static void tick(void) {
     bx[0] = nhx; by[0] = nhy;
 
     if (nhx == fx && nhy == fy) {
-        bx[slen] = otx; by[slen] = oty; slen++; sscore += 10; growing = 1;
+        if (slen < MAX_SNAKE) {
+            bx[slen] = otx; by[slen] = oty; slen++; growing = 1;
+        } else {
+            // At full length there is no room for a new tail cell: keep the
+            // tail policy of a normal move so the old tail is erased instead
+            // of leaving a stale 'o' behind.
+            growing = 0;
+        }
+        sscore += 10;
         play_note(1000, 50);
         spawn_food();
     } else growing = 0;
