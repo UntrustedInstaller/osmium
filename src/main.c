@@ -989,7 +989,7 @@ void cmd_cp(const char* args) {
         print_str("' not found\r\n");
     } else if (r == 2) {
         critical_chime();
-        print_str("ERR: Copy failed (too large, or destination full/exists)\r\n");
+        print_str("ERR: Copy failed (too large, destination full/exists, or into itself)\r\n");
     } else {
         print_str("Copied.\r\n");
     }

@@ -1416,6 +1416,16 @@ uint8_t fs_copy(const char* src, const char* dst, void* buf, uint16_t buf_size) 
     if (!dir_scan(parent, dos, &m, &cluster, &size, &attr, 0, 0)) return 1;
 
     if (attr & 0x10) {
+        // Copying a directory into itself or into one of its children would
+        // create a new directory inside the tree that is being walked, so the
+        // recursion would keep finding the new copy and leave a half-copied
+        // mess. Resolve where the copy would land and refuse if the source is
+        // that location or sits above it.
+        uint16_t dparent;
+        char ddos[12];
+        if (resolve_to(fs_cwd, dst, &dparent, ddos)) return 2;
+        if (dir_within(dparent, cluster)) return 2;
+
         // Directory copy — recurse (calls fs_copy for the files inside).
         return copy_dir_rec(src, dst, buf, buf_size, 0) ? 2 : 0;
     }

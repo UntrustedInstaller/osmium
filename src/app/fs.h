@@ -53,6 +53,8 @@ uint8_t fs_read_file(const char* name, void* buf, uint16_t max);
 uint8_t fs_write_file(const char* name, const void* data, uint32_t size);
 // fs_delete_file: 0 ok, 1 not found, 2 is a directory, 5 disk write failed
 uint8_t fs_delete_file(const char* name);
+// fs_copy: 0 ok, 1 source not found/unreadable, 2 copy failed (too big for the
+//          buffer, disk full, or a directory copied into its own subtree)
 uint8_t fs_copy(const char* src, const char* dst, void* buf, uint16_t buf_size);
 // fs_rename: 0 ok, 1 not found / target exists / directory moved into itself,
 //            2 destination full, 5 disk write failed
