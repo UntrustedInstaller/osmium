@@ -125,10 +125,12 @@ static void install_api(void) {
     uint16_t off = (uint16_t)(uint32_t)&int60_handler;
     __asm__ __volatile__(
         "cli\n\t"
+        "pushw %%es\n\t"              // ES belongs to the caller; don't leak 0
         "xorw %%ax, %%ax\n\t"
         "movw %%ax, %%es\n\t"
         "movw %0, %%es:0x0180\n\t"
         "movw $0x1000, %%es:0x0182\n\t"
+        "popw %%es\n\t"
         "sti\n\t"
         :
         : "r"(off)
