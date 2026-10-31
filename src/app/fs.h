@@ -77,7 +77,8 @@ uint8_t fs_cd(const char* path);
 // fs_mkdir:  0 ok, 1 invalid / already exists, 2 parent directory full or disk full
 uint8_t fs_mkdir(const char* path);
 // fs_mkdir_p: like fs_mkdir, but creates any missing parent directories.
-//   0 ok, 2 disk / directory full
+//   0 ok, 1 a path component exists as a file, 2 disk / directory full,
+//   5 disk write failed
 uint8_t fs_mkdir_p(const char* path);
 // fs_rmdir:  0 ok, 1 not found, 2 not a directory, 3 not empty, 4 directory in use
 uint8_t fs_rmdir(const char* path);

@@ -1096,7 +1096,16 @@ uint8_t fs_mkdir_p(const char* path) {
                 tmp[i] = '\0';
                 uint8_t r = fs_mkdir(tmp);       // 0 = created, 1 = already exists
                 tmp[i] = save;
-                if (r != 0 && r != 1) return r;  // full or write failure stops here
+                if (r == 1) {
+                    // "Already exists" is only fine if it is a directory;
+                    // a file in the middle of the path cannot contain the
+                    // rest of it, and silently returning success would hide
+                    // that nothing was created.
+                    uint16_t dc;
+                    if (resolve_dir(fs_cwd, tmp, &dc)) return 1;
+                } else if (r != 0) {
+                    return r;                    // full or write failure stops here
+                }
             }
         }
     }
