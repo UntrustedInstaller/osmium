@@ -86,6 +86,13 @@ static uint8_t fs_load_geometry(const uint8_t* b) {
     uint16_t clusters = total - fds;                // spc == 1 here
     if (clusters == 0 || clusters >= 4085) return 1;  // FAT12 only
 
+    // Every cluster number is looked up in the fixed-size FAT cache, so the
+    // FAT itself must have room for the last cluster's entry. A BPB that
+    // claims more clusters than its FAT sectors can describe would make
+    // get_fat_entry/set_fat_entry read and write past that cache.
+    uint32_t fat_need = ((uint32_t)(clusters + 1) * 3) / 2 + 2;
+    if (fat_need > (uint32_t)spf * 512) return 1;
+
     fs.bytes_per_sector    = 512;
     fs.sectors_per_cluster = 1;
     fs.reserved_sectors    = res;
