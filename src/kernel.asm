@@ -327,14 +327,45 @@ asm_read_sectors:
 
     mov ah, 0
     cmp ax, di
-    jbe .ars_count_set
+    jbe .ars_have_track
     mov ax, di
+.ars_have_track:
+    ; A BIOS disk transfer must not cross a 64K boundary. BX is always
+    ; sector-aligned, so (0x10000 - BX) / 512 sectors fit before the wrap.
+    ; BX = 0 means the whole window is free (and the track limit is smaller
+    ; than 64K anyway).
+    cmp bx, 0
+    je .ars_count_set
+    push ax              ; track-limited batch
+    mov ax, bx
+    neg ax               ; bytes left before the boundary
+    shr ax, 9            ; whole sectors that fit
+    jz .ars_cap_none     ; nothing fits: never let the transfer wrap
+    pop bp               ; BP = track-limited batch
+    cmp bp, ax
+    jbe .ars_cap_keep
+    mov bp, ax
+.ars_cap_keep:
+    mov ax, bp
+    jmp .ars_count_set
+.ars_cap_none:
+    pop ax               ; discard the saved batch
+    jmp .ars_done_err
+
 .ars_count_set:
     push ax              ; save batch count
 
     mov ah, 0x02
     mov dl, [boot_drive]
+    ; The BIOS owns these registers during int 13h; do not assume it returns
+    ; SI/DI (the LBA and remaining count) or BX (the buffer) unchanged.
+    push bx
+    push si
+    push di
     int 0x13
+    pop di
+    pop si
+    pop bx
     jc .ars_pop_err
 
     pop ax               ; AX = batch count
