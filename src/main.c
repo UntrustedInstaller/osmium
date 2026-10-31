@@ -940,7 +940,7 @@ void cmd_mv(const char* args) {
         error_chime();
         print_str("ERR: '");
         print_str(src);
-        print_str("' not found, or target already exists\r\n");
+        print_str("' not found, target exists, or invalid move\r\n");
     } else if (r == 2) {
         critical_chime();
         print_str("ERR: Destination directory is full\r\n");

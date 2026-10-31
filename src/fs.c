@@ -433,6 +433,17 @@ static uint16_t dir_parent(uint16_t dc) {
     return 0;
 }
 
+// True if dc is ancestor itself or sits somewhere below it. Walks upward
+// through ".." entries, bounded so a corrupt loop can't spin forever.
+static uint8_t dir_within(uint16_t dc, uint16_t ancestor) {
+    uint16_t steps = 0;
+    while (dc != 0 && ++steps <= fs.total_clusters + 2) {
+        if (dc == ancestor) return 1;
+        dc = dir_parent(dc);
+    }
+    return 0;
+}
+
 // Finds a free directory-entry slot in dc, extending the directory's cluster
 // chain (subdirectories only) if it is full. Root is fixed-size.
 // Returns 0 with *out set on success, 1 if the directory is full.
@@ -1266,6 +1277,12 @@ uint8_t fs_rename(const char* old_name, const char* new_name) {
         if (same_entry(&m1, &m2)) return 0;   // renaming a thing to itself — no-op
         return 1;                             // target already exists
     }
+
+    // Moving a directory into itself or into one of its own children would
+    // detach that whole subtree from the root and leave ".." pointing back
+    // into a loop, so the files inside could never be reached again. Refuse.
+    if ((attr1 & 0x10) && parent2 != parent1 && dir_within(parent2, cluster1))
+        return 1;
 
     if (parent2 == parent1) {
         uint8_t* de = dir_load(&m1);

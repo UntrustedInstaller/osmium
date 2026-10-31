@@ -54,8 +54,8 @@ uint8_t fs_write_file(const char* name, const void* data, uint32_t size);
 // fs_delete_file: 0 ok, 1 not found, 2 is a directory, 5 disk write failed
 uint8_t fs_delete_file(const char* name);
 uint8_t fs_copy(const char* src, const char* dst, void* buf, uint16_t buf_size);
-// fs_rename: 0 ok, 1 not found / target exists, 2 destination full,
-//            5 disk write failed
+// fs_rename: 0 ok, 1 not found / target exists / directory moved into itself,
+//            2 destination full, 5 disk write failed
 uint8_t fs_rename(const char* old_name, const char* new_name);
 
 // ---- working directory & navigation ----
